@@ -76,8 +76,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /** Task whose schedule is being edited in the dialog, if any. */
     var editingTask by mutableStateOf<OpenTaskEntity?>(null)
 
-    /** Task whose wait options are being picked, if any. */
+    /**
+     * Task whose wait options are being picked in the anchorless dialog, if any.
+     * The row's own snooze button uses a dropdown with local state instead; this
+     * is for the reminder notification's "Other…" action, which has no anchor.
+     */
     var waitPickerTask by mutableStateOf<OpenTaskEntity?>(null)
+
+    /**
+     * Task waiting on an exact date and time. Hosted at the MainScreen top level
+     * so scrolling its row out of the list can't dispose the picker.
+     */
+    var exactWaitTask by mutableStateOf<OpenTaskEntity?>(null)
 
     var titleHistory by mutableStateOf<List<String>>(emptyList())
         private set

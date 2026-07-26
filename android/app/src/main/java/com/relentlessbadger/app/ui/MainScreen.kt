@@ -49,7 +49,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TimePicker
@@ -103,6 +102,7 @@ fun MainScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val use24Hour = DateFormat.is24HourFormat(context)
+    val waitMinutes = session?.waitMinutes ?: DEFAULT_WAIT_MINUTES
 
     LaunchedEffect(Unit) {
         requestNotificationPermission()
@@ -208,9 +208,11 @@ fun MainScreen(
                             scheduled = false,
                             nowMillis = nowMillis,
                             use24Hour = use24Hour,
+                            waitMinutes = waitMinutes,
                             onDone = { viewModel.completeTask(task.id) },
                             onCancel = { viewModel.cancelTask(task.id) },
-                            onSnooze = { viewModel.waitPickerTask = task },
+                            onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                            onPickDateTime = { viewModel.exactWaitTask = task },
                             onEdit = { viewModel.beginEditSchedule(task) },
                         )
                         HorizontalDivider()
@@ -230,9 +232,11 @@ fun MainScreen(
                                 scheduled = true,
                                 nowMillis = nowMillis,
                                 use24Hour = use24Hour,
+                                waitMinutes = waitMinutes,
                                 onDone = { viewModel.completeTask(task.id) },
                                 onCancel = { viewModel.cancelTask(task.id) },
-                                onSnooze = { viewModel.waitPickerTask = task },
+                                onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                                onPickDateTime = { viewModel.exactWaitTask = task },
                                 onEdit = { viewModel.beginEditSchedule(task) },
                             )
                             HorizontalDivider()
@@ -243,19 +247,31 @@ fun MainScreen(
         }
     }
 
-    // Hosted once for both entry points — the row's snooze button and the
-    // reminder notification's "Other…" action — so they behave identically.
+    // The row's snooze button gets a dropdown anchored to itself; this dialog is
+    // for the reminder notification's "Other…" action, which arrives with no row
+    // on screen to hang a dropdown off.
     viewModel.waitPickerTask?.let { task ->
-        WaitOptionsSheet(
+        WaitOptionsDialog(
             title = task.title,
-            waitMinutes = session?.waitMinutes ?: DEFAULT_WAIT_MINUTES,
+            waitMinutes = waitMinutes,
             onDismiss = { viewModel.waitPickerTask = null },
             onSnooze = { minutes ->
                 viewModel.waitPickerTask = null
                 viewModel.snoozeTask(task.id, minutes)
             },
-            onSnoozeUntil = { atMillis ->
+            onPickDateTime = {
                 viewModel.waitPickerTask = null
+                viewModel.exactWaitTask = task
+            },
+        )
+    }
+
+    viewModel.exactWaitTask?.let { task ->
+        DateTimePickerFlow(
+            initialMillis = null,
+            onDismiss = { viewModel.exactWaitTask = null },
+            onPicked = { atMillis ->
+                viewModel.exactWaitTask = null
                 viewModel.snoozeUntil(task.id, atMillis)
             },
         )
@@ -440,53 +456,47 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
 
 /**
  * Every configured wait plus an escape hatch to an exact date and time. Both
- * defer the task locally without touching its real schedule.
+ * defer the task locally without touching its real schedule. The anchorless
+ * counterpart of the dropdown on a task row's snooze button.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WaitOptionsSheet(
+private fun WaitOptionsDialog(
     title: String,
     waitMinutes: List<Int>,
     onDismiss: () -> Unit,
     onSnooze: (Int) -> Unit,
-    onSnoozeUntil: (Long) -> Unit,
+    onPickDateTime: () -> Unit,
 ) {
-    var showDateTimePicker by remember { mutableStateOf(false) }
-
-    // The picker is a dialog of its own; hiding the sheet first keeps the two
-    // from stacking on top of each other.
-    if (showDateTimePicker) {
-        DateTimePickerFlow(
-            initialMillis = null,
-            onDismiss = { showDateTimePicker = false },
-            onPicked = onSnoozeUntil,
-        )
-        return
-    }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Text(
-            title,
-            style = MaterialTheme.typography.titleMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-        )
-        waitMinutes.forEach { minutes ->
-            ListItem(
-                headlineContent = { Text("Wait ${formatDuration(minutes)}") },
-                leadingContent = { Icon(Icons.Filled.Snooze, contentDescription = null) },
-                modifier = Modifier.clickable { onSnooze(minutes) },
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                title,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-        }
-        HorizontalDivider()
-        ListItem(
-            headlineContent = { Text("Pick a date & time…") },
-            leadingContent = { Icon(Icons.Filled.Schedule, contentDescription = null) },
-            modifier = Modifier.clickable { showDateTimePicker = true },
-        )
-        Spacer(Modifier.height(16.dp))
-    }
+        },
+        text = {
+            Column {
+                waitMinutes.forEach { minutes ->
+                    ListItem(
+                        headlineContent = { Text("Wait ${formatDuration(minutes)}") },
+                        leadingContent = { Icon(Icons.Filled.Snooze, contentDescription = null) },
+                        modifier = Modifier.clickable { onSnooze(minutes) },
+                    )
+                }
+                HorizontalDivider()
+                ListItem(
+                    headlineContent = { Text("Pick a date & time…") },
+                    leadingContent = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+                    modifier = Modifier.clickable(onClick = onPickDateTime),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        },
+    )
 }
 
 /**
@@ -565,7 +575,9 @@ private fun TaskRow(
     use24Hour: Boolean,
     onDone: () -> Unit,
     onCancel: () -> Unit,
-    onSnooze: () -> Unit,
+    waitMinutes: List<Int>,
+    onSnooze: (Int) -> Unit,
+    onPickDateTime: () -> Unit,
     onEdit: () -> Unit,
 ) {
     Row(
@@ -603,8 +615,34 @@ private fun TaskRow(
 
         // Snoozing a task that hasn't started nagging is meaningless.
         if (!scheduled) {
-            IconButton(onClick = onSnooze) {
-                Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
+            var menuExpanded by remember { mutableStateOf(false) }
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
+                }
+                // Anchored to the button so the options appear where the user is
+                // already looking.
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    waitMinutes.forEach { minutes ->
+                        DropdownMenuItem(
+                            text = { Text("Wait ${formatDuration(minutes)}") },
+                            leadingIcon = { Icon(Icons.Filled.Snooze, contentDescription = null) },
+                            onClick = {
+                                menuExpanded = false
+                                onSnooze(minutes)
+                            },
+                        )
+                    }
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text("Pick a date & time…") },
+                        leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onPickDateTime()
+                        },
+                    )
+                }
             }
         }
 
