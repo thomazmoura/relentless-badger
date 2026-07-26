@@ -41,7 +41,7 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
     var failTaskPull = false
     var failSettingsPush = false
 
-    var settings = SettingsDto(60, 15, 60, 240)
+    var settings = SettingsDto(60, 15, listOf(60, 240), 0)
     val tasks = linkedMapOf<String, TaskDto>()
 
     val receivedCreates = mutableListOf<CreateTaskRequest>()
@@ -207,7 +207,7 @@ class RecordingReminderScheduler : ReminderScheduler {
     val dismissed = mutableListOf<String>()
     val shownReminders = mutableListOf<ShownReminder>()
 
-    data class ShownReminder(val task: OpenTaskEntity, val mediumWaitMinutes: Int, val longWaitMinutes: Int)
+    data class ShownReminder(val task: OpenTaskEntity, val defaultWaitMinutes: Int)
 
     override fun canScheduleExact(): Boolean = true
 
@@ -224,8 +224,8 @@ class RecordingReminderScheduler : ReminderScheduler {
         dismissed += taskId
     }
 
-    override fun showReminder(task: OpenTaskEntity, mediumWaitMinutes: Int, longWaitMinutes: Int) {
-        shownReminders += ShownReminder(task, mediumWaitMinutes, longWaitMinutes)
+    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int) {
+        shownReminders += ShownReminder(task, defaultWaitMinutes)
     }
 }
 
@@ -239,7 +239,7 @@ class RecordingSyncScheduler : SyncScheduler {
 }
 
 class FakeSettingsStore : SettingsStore {
-    var settings = SettingsDto(60, 15, 60, 240)
+    var settings = SettingsDto(60, 15, listOf(60, 240), 0)
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -249,8 +249,8 @@ class FakeSettingsStore : SettingsStore {
         email = "test@example.com",
         initialDelayMinutes = settings.initialDelayMinutes,
         repeatIntervalMinutes = settings.repeatIntervalMinutes,
-        mediumWaitMinutes = settings.mediumWaitMinutes,
-        longWaitMinutes = settings.longWaitMinutes,
+        waitMinutes = settings.waitMinutes,
+        defaultWaitIndex = settings.defaultWaitIndex,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {

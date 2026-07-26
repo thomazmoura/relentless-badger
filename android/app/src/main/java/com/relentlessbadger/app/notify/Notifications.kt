@@ -10,11 +10,15 @@ import androidx.core.app.NotificationManagerCompat
 import com.relentlessbadger.app.MainActivity
 import com.relentlessbadger.app.R
 import com.relentlessbadger.app.db.OpenTaskEntity
+import com.relentlessbadger.app.ui.formatDuration
 
 object Notifications {
     const val CHANNEL_ID = "task_reminders"
     const val EXTRA_TASK_ID = "taskId"
     const val EXTRA_SNOOZE_MINUTES = "snoozeMinutes"
+
+    /** Tells MainActivity to open the wait picker for [EXTRA_TASK_ID] on launch. */
+    const val EXTRA_SHOW_WAIT_PICKER = "showWaitPicker"
 
     fun ensureChannel(context: Context) {
         val channel = NotificationChannel(
@@ -27,7 +31,12 @@ object Notifications {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    fun showReminder(context: Context, task: OpenTaskEntity, mediumWaitMinutes: Int, longWaitMinutes: Int) {
+    /**
+     * Android shows at most three action buttons, so the reminder offers a
+     * one-tap snooze by [defaultWaitMinutes], an "Other…" button that opens the
+     * app on the full list of configured waits, and Done.
+     */
+    fun showReminder(context: Context, task: OpenTaskEntity, defaultWaitMinutes: Int) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
         val openApp = PendingIntent.getActivity(
@@ -42,16 +51,30 @@ object Notifications {
             Intent(context, ReminderActionReceiver::class.java).putExtra(EXTRA_TASK_ID, task.id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val mediumIntent = snoozeIntent(context, task.id, mediumWaitMinutes, task.id.hashCode() + 1)
-        val longIntent = snoozeIntent(context, task.id, longWaitMinutes, task.id.hashCode() + 2)
+        val waitIntent = snoozeIntent(context, task.id, defaultWaitMinutes, task.id.hashCode() + 1)
+        val otherIntent = PendingIntent.getActivity(
+            context,
+            task.id.hashCode() + 2,
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_TASK_ID, task.id)
+                .putExtra(EXTRA_SHOW_WAIT_PICKER, true),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(task.title)
             .setContentIntent(openApp)
-            .addAction(0, context.getString(R.string.notification_action_medium_wait), mediumIntent)
-            .addAction(0, context.getString(R.string.notification_action_long_wait), longIntent)
+            .addAction(
+                0,
+                context.getString(
+                    R.string.notification_action_wait,
+                    formatDuration(defaultWaitMinutes),
+                ),
+                waitIntent,
+            )
+            .addAction(0, context.getString(R.string.notification_action_other), otherIntent)
             .addAction(0, context.getString(R.string.notification_action_done), doneIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)

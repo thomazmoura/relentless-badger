@@ -18,10 +18,15 @@ data class Session(
     val email: String?,
     val initialDelayMinutes: Int,
     val repeatIntervalMinutes: Int,
-    val mediumWaitMinutes: Int,
-    val longWaitMinutes: Int,
+    // Ordered snooze options, 1..MAX_WAITS entries, each at least a minute.
+    val waitMinutes: List<Int>,
+    // Index into [waitMinutes]: the wait the notification's one-tap button uses.
+    val defaultWaitIndex: Int,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
+
+    val defaultWaitMinutes: Int
+        get() = waitMinutes.getOrElse(defaultWaitIndex) { waitMinutes.first() }
 }
 
 /**
@@ -46,9 +51,15 @@ class SessionStore(private val context: Context) : SettingsStore {
         val EMAIL = stringPreferencesKey("email")
         val INITIAL_DELAY = intPreferencesKey("initial_delay_minutes")
         val REPEAT_INTERVAL = intPreferencesKey("repeat_interval_minutes")
+        val WAIT_MINUTES = stringPreferencesKey("wait_minutes")
+        val DEFAULT_WAIT_INDEX = intPreferencesKey("default_wait_index")
+        val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
+
+        // Superseded by WAIT_MINUTES. Still read (never written) so an install
+        // upgrading from the fixed medium/long pair keeps its configured values
+        // instead of silently reverting to the defaults.
         val MEDIUM_WAIT = intPreferencesKey("medium_wait_minutes")
         val LONG_WAIT = intPreferencesKey("long_wait_minutes")
-        val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
     }
 
     // Mirrors kept warm for the OkHttp auth interceptor, which cannot suspend.
@@ -64,8 +75,10 @@ class SessionStore(private val context: Context) : SettingsStore {
             email = prefs[Keys.EMAIL],
             initialDelayMinutes = prefs[Keys.INITIAL_DELAY] ?: 60,
             repeatIntervalMinutes = prefs[Keys.REPEAT_INTERVAL] ?: 15,
-            mediumWaitMinutes = prefs[Keys.MEDIUM_WAIT] ?: 60,
-            longWaitMinutes = prefs[Keys.LONG_WAIT] ?: 240,
+            waitMinutes = resolveWaitMinutes(
+                prefs[Keys.WAIT_MINUTES], prefs[Keys.MEDIUM_WAIT], prefs[Keys.LONG_WAIT],
+            ),
+            defaultWaitIndex = prefs[Keys.DEFAULT_WAIT_INDEX] ?: 0,
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -86,8 +99,8 @@ class SessionStore(private val context: Context) : SettingsStore {
             it[Keys.EMAIL] = email
             it[Keys.INITIAL_DELAY] = settings.initialDelayMinutes
             it[Keys.REPEAT_INTERVAL] = settings.repeatIntervalMinutes
-            it[Keys.MEDIUM_WAIT] = settings.mediumWaitMinutes
-            it[Keys.LONG_WAIT] = settings.longWaitMinutes
+            it[Keys.WAIT_MINUTES] = settings.waitMinutes.joinToString(",")
+            it[Keys.DEFAULT_WAIT_INDEX] = settings.defaultWaitIndex
         }
         cachedToken = token
     }
@@ -96,8 +109,8 @@ class SessionStore(private val context: Context) : SettingsStore {
         context.dataStore.edit {
             it[Keys.INITIAL_DELAY] = settings.initialDelayMinutes
             it[Keys.REPEAT_INTERVAL] = settings.repeatIntervalMinutes
-            it[Keys.MEDIUM_WAIT] = settings.mediumWaitMinutes
-            it[Keys.LONG_WAIT] = settings.longWaitMinutes
+            it[Keys.WAIT_MINUTES] = settings.waitMinutes.joinToString(",")
+            it[Keys.DEFAULT_WAIT_INDEX] = settings.defaultWaitIndex
         }
     }
 
@@ -118,3 +131,18 @@ class SessionStore(private val context: Context) : SettingsStore {
         cachedBaseUrl = ""
     }
 }
+
+/**
+ * The stored wait list, or — on an install upgrading from the fixed medium/long
+ * pair — those two values folded into a list so the user's configuration
+ * carries over. A malformed or empty stored list would leave the app with no
+ * snooze options at all, so anything unusable falls back to the defaults.
+ */
+internal fun resolveWaitMinutes(csv: String?, legacyMedium: Int?, legacyLong: Int?): List<Int> =
+    csv?.parseWaitMinutes()
+        ?: listOfNotNull(legacyMedium, legacyLong)
+            .filter { it >= 1 }
+            .ifEmpty { DEFAULT_WAIT_MINUTES }
+
+private fun String.parseWaitMinutes(): List<Int>? =
+    split(',').mapNotNull { it.trim().toIntOrNull()?.takeIf { m -> m >= 1 } }.ifEmpty { null }

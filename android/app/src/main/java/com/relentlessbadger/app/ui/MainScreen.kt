@@ -32,16 +32,16 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.TimePicker
@@ -65,6 +65,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.relentlessbadger.app.data.DEFAULT_WAIT_MINUTES
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.recurrence
@@ -180,10 +181,8 @@ fun MainScreen(
                             scheduled = false,
                             nowMillis = nowMillis,
                             use24Hour = use24Hour,
-                            mediumWaitMinutes = session?.mediumWaitMinutes ?: 60,
-                            longWaitMinutes = session?.longWaitMinutes ?: 240,
                             onDone = { viewModel.completeTask(task.id) },
-                            onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                            onSnooze = { viewModel.waitPickerTask = task },
                             onEdit = { viewModel.beginEditSchedule(task) },
                         )
                         HorizontalDivider()
@@ -203,10 +202,8 @@ fun MainScreen(
                                 scheduled = true,
                                 nowMillis = nowMillis,
                                 use24Hour = use24Hour,
-                                mediumWaitMinutes = session?.mediumWaitMinutes ?: 60,
-                                longWaitMinutes = session?.longWaitMinutes ?: 240,
                                 onDone = { viewModel.completeTask(task.id) },
-                                onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                                onSnooze = { viewModel.waitPickerTask = task },
                                 onEdit = { viewModel.beginEditSchedule(task) },
                             )
                             HorizontalDivider()
@@ -215,6 +212,24 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // Hosted once for both entry points — the row's snooze button and the
+    // reminder notification's "Other…" action — so they behave identically.
+    viewModel.waitPickerTask?.let { task ->
+        WaitOptionsSheet(
+            title = task.title,
+            waitMinutes = session?.waitMinutes ?: DEFAULT_WAIT_MINUTES,
+            onDismiss = { viewModel.waitPickerTask = null },
+            onSnooze = { minutes ->
+                viewModel.waitPickerTask = null
+                viewModel.snoozeTask(task.id, minutes)
+            },
+            onSnoozeUntil = { atMillis ->
+                viewModel.waitPickerTask = null
+                viewModel.snoozeUntil(task.id, atMillis)
+            },
+        )
     }
 
     viewModel.editingTask?.let { task ->
@@ -386,6 +401,57 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
 }
 
 /**
+ * Every configured wait plus an escape hatch to an exact date and time. Both
+ * defer the task locally without touching its real schedule.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WaitOptionsSheet(
+    title: String,
+    waitMinutes: List<Int>,
+    onDismiss: () -> Unit,
+    onSnooze: (Int) -> Unit,
+    onSnoozeUntil: (Long) -> Unit,
+) {
+    var showDateTimePicker by remember { mutableStateOf(false) }
+
+    // The picker is a dialog of its own; hiding the sheet first keeps the two
+    // from stacking on top of each other.
+    if (showDateTimePicker) {
+        DateTimePickerFlow(
+            initialMillis = null,
+            onDismiss = { showDateTimePicker = false },
+            onPicked = onSnoozeUntil,
+        )
+        return
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+        waitMinutes.forEach { minutes ->
+            ListItem(
+                headlineContent = { Text("Wait ${formatDuration(minutes)}") },
+                leadingContent = { Icon(Icons.Filled.Snooze, contentDescription = null) },
+                modifier = Modifier.clickable { onSnooze(minutes) },
+            )
+        }
+        HorizontalDivider()
+        ListItem(
+            headlineContent = { Text("Pick a date & time…") },
+            leadingContent = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+            modifier = Modifier.clickable { showDateTimePicker = true },
+        )
+        Spacer(Modifier.height(16.dp))
+    }
+}
+
+/**
  * The two-step date-then-time picker. The DatePicker returns UTC midnight for
  * the chosen calendar day; the result combines that date with the picked local
  * time in the device zone.
@@ -459,10 +525,8 @@ private fun TaskRow(
     scheduled: Boolean,
     nowMillis: Long,
     use24Hour: Boolean,
-    mediumWaitMinutes: Int,
-    longWaitMinutes: Int,
     onDone: () -> Unit,
-    onSnooze: (Int) -> Unit,
+    onSnooze: () -> Unit,
     onEdit: () -> Unit,
 ) {
     Row(
@@ -500,27 +564,8 @@ private fun TaskRow(
 
         // Snoozing a task that hasn't started nagging is meaningless.
         if (!scheduled) {
-            var menuExpanded by remember { mutableStateOf(false) }
-            Box {
-                IconButton(onClick = { menuExpanded = true }) {
-                    Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
-                }
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Medium wait (${formatDuration(mediumWaitMinutes)})") },
-                        onClick = {
-                            menuExpanded = false
-                            onSnooze(mediumWaitMinutes)
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Long wait (${formatDuration(longWaitMinutes)})") },
-                        onClick = {
-                            menuExpanded = false
-                            onSnooze(longWaitMinutes)
-                        },
-                    )
-                }
+            IconButton(onClick = onSnooze) {
+                Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
             }
         }
 
@@ -748,7 +793,8 @@ private fun relativeFuture(epochMillis: Long, nowMillis: Long): String {
     }
 }
 
-private fun formatDuration(minutes: Int): String = when {
+/** "45m", "4h", "1h 30m" — also used for the notification's Wait button. */
+internal fun formatDuration(minutes: Int): String = when {
     minutes < 60 -> "${minutes}m"
     minutes % 60 == 0 -> "${minutes / 60}h"
     else -> "${minutes / 60}h ${minutes % 60}m"

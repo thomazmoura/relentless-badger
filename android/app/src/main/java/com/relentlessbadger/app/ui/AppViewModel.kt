@@ -73,6 +73,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /** Task whose schedule is being edited in the dialog, if any. */
     var editingTask by mutableStateOf<OpenTaskEntity?>(null)
 
+    /** Task whose wait options are being picked, if any. */
+    var waitPickerTask by mutableStateOf<OpenTaskEntity?>(null)
+
     var titleHistory by mutableStateOf<List<String>>(emptyList())
         private set
     val suggestions by derivedStateOf {
@@ -168,22 +171,39 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * Opens the wait picker for a task named by the reminder notification's
+     * "Other…" action. Silently does nothing if the task is already gone — it
+     * was completed elsewhere while the notification lingered.
+     */
+    fun openWaitPicker(id: String) {
+        viewModelScope.launch {
+            waitPickerTask = container.repository.openTask(id)
+        }
+    }
+
     fun snoozeTask(id: String, minutes: Int) {
         viewModelScope.launch {
             container.repository.snoozeTask(id, minutes)
         }
     }
 
+    fun snoozeUntil(id: String, atMillis: Long) {
+        viewModelScope.launch {
+            container.repository.snoozeUntil(id, atMillis)
+        }
+    }
+
     fun saveSettings(
         initialDelayMinutes: Int,
         repeatIntervalMinutes: Int,
-        mediumWaitMinutes: Int,
-        longWaitMinutes: Int,
+        waitMinutes: List<Int>,
+        defaultWaitIndex: Int,
         onDone: () -> Unit,
     ) {
         launchBusy {
             container.repository.updateSettings(
-                SettingsDto(initialDelayMinutes, repeatIntervalMinutes, mediumWaitMinutes, longWaitMinutes),
+                SettingsDto(initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex),
             )
             onDone()
         }

@@ -5,13 +5,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class LoginRequest(val idToken: String)
 
+// waitMinutes is the ordered list of snooze options offered on a task and its
+// reminder; defaultWaitIndex picks the one the notification's one-tap Wait
+// button uses. At most MAX_WAITS entries — see Session.waitMinutes.
 @Serializable
 data class SettingsDto(
     val initialDelayMinutes: Int,
     val repeatIntervalMinutes: Int,
-    val mediumWaitMinutes: Int = 60,
-    val longWaitMinutes: Int = 240,
+    val waitMinutes: List<Int> = DEFAULT_WAIT_MINUTES,
+    val defaultWaitIndex: Int = 0,
 )
+
+const val MAX_WAITS = 6
+val DEFAULT_WAIT_MINUTES = listOf(60, 240)
 
 @Serializable
 data class LoginResponse(

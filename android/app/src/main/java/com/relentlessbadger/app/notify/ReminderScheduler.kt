@@ -20,7 +20,8 @@ interface ReminderScheduler {
     /** Clears the currently shown reminder without touching the scheduled alarm. */
     fun dismissNotification(taskId: String)
 
-    fun showReminder(task: OpenTaskEntity, mediumWaitMinutes: Int, longWaitMinutes: Int)
+    /** [defaultWaitMinutes] backs the notification's one-tap Wait button. */
+    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -53,8 +54,8 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
         Notifications.cancel(context, taskId)
     }
 
-    override fun showReminder(task: OpenTaskEntity, mediumWaitMinutes: Int, longWaitMinutes: Int) {
-        Notifications.showReminder(context, task, mediumWaitMinutes, longWaitMinutes)
+    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int) {
+        Notifications.showReminder(context, task, defaultWaitMinutes)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

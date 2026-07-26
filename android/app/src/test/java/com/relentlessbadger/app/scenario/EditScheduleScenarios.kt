@@ -171,4 +171,16 @@ class EditScheduleScenarios : ScenarioTest() {
         assertEquals(snoozedUntil, localTask(task.id).nextFireAtMillis)
         thenAlarmScheduledAt(task.id, snoozedUntil)
     }
+
+    @Test
+    fun `a snooze until an exact time also survives a pull whose schedule is unchanged`() = scenario {
+        val task = givenSyncedTask("water plants")
+        val snoozedUntil = clock.now() + 17 * 60 * minute
+        whenSnoozedUntil(task.id, snoozedUntil)
+
+        whenSyncRuns()
+
+        assertEquals(snoozedUntil, localTask(task.id).nextFireAtMillis)
+        thenAlarmScheduledAt(task.id, snoozedUntil)
+    }
 }

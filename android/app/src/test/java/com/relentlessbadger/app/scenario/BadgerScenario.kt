@@ -75,11 +75,11 @@ class BadgerScenario {
     suspend fun givenLocalSettings(
         initialDelayMinutes: Int,
         repeatIntervalMinutes: Int,
-        mediumWaitMinutes: Int = 60,
-        longWaitMinutes: Int = 240,
+        waitMinutes: List<Int> = listOf(60, 240),
+        defaultWaitIndex: Int = 0,
     ) {
         settingsStore.saveSettings(
-            SettingsDto(initialDelayMinutes, repeatIntervalMinutes, mediumWaitMinutes, longWaitMinutes),
+            SettingsDto(initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex),
         )
     }
 
@@ -108,6 +108,8 @@ class BadgerScenario {
     ) = repository.editSchedule(id, firstWarningAtMillis, repeatIntervalMinutes, recurrence)
 
     suspend fun whenSnoozed(id: String, minutes: Int) = repository.snoozeTask(id, minutes)
+
+    suspend fun whenSnoozedUntil(id: String, atMillis: Long) = repository.snoozeUntil(id, atMillis)
 
     suspend fun whenReminderFires(id: String) = repository.onReminderFired(id)
 

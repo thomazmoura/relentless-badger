@@ -19,9 +19,20 @@ public static class SettingsEndpoints
         group.MapPut("/settings", async (SettingsDto settings, ClaimsPrincipal principal, AppDbContext db) =>
         {
             if (settings.InitialDelayMinutes < 1 || settings.RepeatIntervalMinutes < 1 ||
-                settings.MediumWaitMinutes < 1 || settings.LongWaitMinutes < 1)
+                settings.WaitMinutes is null || settings.WaitMinutes.Any(w => w < 1))
             {
                 return Results.BadRequest(new { error = "Delays must be at least 1 minute." });
+            }
+
+            if (settings.WaitMinutes.Length is 0 || settings.WaitMinutes.Length > SettingsDto.MaxWaits)
+            {
+                return Results.BadRequest(
+                    new { error = $"Pick between 1 and {SettingsDto.MaxWaits} waits." });
+            }
+
+            if (settings.DefaultWaitIndex < 0 || settings.DefaultWaitIndex >= settings.WaitMinutes.Length)
+            {
+                return Results.BadRequest(new { error = "The default wait must be one of the waits." });
             }
 
             var user = await principal.GetUserAsync(db);
@@ -32,8 +43,8 @@ public static class SettingsEndpoints
 
             user.InitialDelayMinutes = settings.InitialDelayMinutes;
             user.RepeatIntervalMinutes = settings.RepeatIntervalMinutes;
-            user.MediumWaitMinutes = settings.MediumWaitMinutes;
-            user.LongWaitMinutes = settings.LongWaitMinutes;
+            user.WaitMinutesCsv = SettingsDto.ToCsv(settings.WaitMinutes);
+            user.DefaultWaitIndex = settings.DefaultWaitIndex;
             await db.SaveChangesAsync();
 
             return Results.Ok(SettingsDto.From(user));

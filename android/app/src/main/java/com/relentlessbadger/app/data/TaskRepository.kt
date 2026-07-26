@@ -32,6 +32,8 @@ class TaskRepository(
 
     fun openTasks(): Flow<List<OpenTaskEntity>> = dao.observeActive()
 
+    suspend fun openTask(id: String): OpenTaskEntity? = dao.getById(id)?.takeIf { !it.pendingDone }
+
     fun completedTasksBetween(fromMillis: Long, toMillis: Long): Flow<List<CompletedTaskEntity>> =
         completedDao.observeBetween(fromMillis, toMillis)
 
@@ -166,9 +168,20 @@ class TaskRepository(
      * clears the current reminder. Purely local: the new fire time lives in Room
      * and is preserved across syncs, so the server never needs to know.
      */
-    suspend fun snoozeTask(id: String, minutes: Int) {
+    suspend fun snoozeTask(id: String, minutes: Int) =
+        snoozeUntil(id, timeSource.now() + minutes * 60_000L)
+
+    /**
+     * Silences the task until an exact moment picked by the user, with the same
+     * local-only semantics as [snoozeTask]: the task's own schedule (start time,
+     * interval, recurrence) is untouched, so this defers the nag without
+     * rewriting what the task actually is. A time in the past is ignored — it
+     * would fire instantly and look like the snooze did nothing.
+     */
+    suspend fun snoozeUntil(id: String, atMillis: Long) {
+        if (atMillis <= timeSource.now()) return
         val task = dao.getById(id) ?: return
-        val next = task.copy(nextFireAtMillis = timeSource.now() + minutes * 60_000L)
+        val next = task.copy(nextFireAtMillis = atMillis)
         dao.upsert(next)
         scheduler.schedule(next)
         scheduler.dismissNotification(id)
@@ -182,7 +195,7 @@ class TaskRepository(
         val task = dao.getById(id) ?: return
         if (task.pendingDone) return
         val session = settings.current()
-        scheduler.showReminder(task, session.mediumWaitMinutes, session.longWaitMinutes)
+        scheduler.showReminder(task, session.defaultWaitMinutes)
         val next = task.copy(
             nextFireAtMillis = timeSource.now() + task.repeatIntervalMinutes * 60_000L,
         )
@@ -394,7 +407,7 @@ class TaskRepository(
         apiClient.api().updateSettings(
             SettingsDto(
                 session.initialDelayMinutes, session.repeatIntervalMinutes,
-                session.mediumWaitMinutes, session.longWaitMinutes,
+                session.waitMinutes, session.defaultWaitIndex,
             ),
         )
         settings.clearSettingsDirty()

@@ -26,7 +26,7 @@ class MutationsRequestSyncScenarios : ScenarioTest() {
         whenTaskCompleted(task.id)
         assertEquals(2, syncRequests.requests)
 
-        whenSettingsSaved(SettingsDto(30, 5, 90, 300))
+        whenSettingsSaved(SettingsDto(30, 5, listOf(90, 300), 0))
         assertEquals(3, syncRequests.requests)
     }
 }

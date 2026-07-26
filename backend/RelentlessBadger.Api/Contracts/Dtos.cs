@@ -6,14 +6,27 @@ public record GoogleLoginRequest(string IdToken);
 
 public record LoginResponse(string Token, string Email, string? Name, SettingsDto Settings);
 
+// WaitMinutes is the ordered list of snooze options; DefaultWaitIndex picks the
+// one the reminder notification offers as its one-tap Wait button. Stored on the
+// user as CSV, exposed here as an array.
 public record SettingsDto(
     int InitialDelayMinutes,
     int RepeatIntervalMinutes,
-    int MediumWaitMinutes,
-    int LongWaitMinutes)
+    int[] WaitMinutes,
+    int DefaultWaitIndex)
 {
+    public const int MaxWaits = 6;
+
     public static SettingsDto From(User user) =>
-        new(user.InitialDelayMinutes, user.RepeatIntervalMinutes, user.MediumWaitMinutes, user.LongWaitMinutes);
+        new(user.InitialDelayMinutes, user.RepeatIntervalMinutes,
+            ParseWaits(user.WaitMinutesCsv), user.DefaultWaitIndex);
+
+    public static int[] ParseWaits(string csv) =>
+        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(int.Parse)
+            .ToArray();
+
+    public static string ToCsv(int[] waits) => string.Join(',', waits);
 }
 
 // Id/CreatedAt/delay overrides let an offline-first client push a task it

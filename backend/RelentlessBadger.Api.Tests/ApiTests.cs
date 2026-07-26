@@ -286,28 +286,55 @@ public class ApiTests : IClassFixture<TestAppFactory>
         var defaults = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
         Assert.Equal(60, defaults!.InitialDelayMinutes);
         Assert.Equal(15, defaults.RepeatIntervalMinutes);
-        Assert.Equal(60, defaults.MediumWaitMinutes);
-        Assert.Equal(240, defaults.LongWaitMinutes);
+        Assert.Equal([60, 240], defaults.WaitMinutes);
+        Assert.Equal(0, defaults.DefaultWaitIndex);
 
-        var putResponse = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, 90, 300));
+        var putResponse = await client.PutAsJsonAsync(
+            "/me/settings", new SettingsDto(30, 5, [15, 90, 300, 480], 2));
         putResponse.EnsureSuccessStatusCode();
 
         var updated = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
         Assert.Equal(30, updated!.InitialDelayMinutes);
         Assert.Equal(5, updated.RepeatIntervalMinutes);
-        Assert.Equal(90, updated.MediumWaitMinutes);
-        Assert.Equal(300, updated.LongWaitMinutes);
+        Assert.Equal([15, 90, 300, 480], updated.WaitMinutes);
+        Assert.Equal(2, updated.DefaultWaitIndex);
 
         var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("water plants")))
             .Content.ReadFromJsonAsync<TaskDto>();
         Assert.Equal(30, task!.InitialDelayMinutes);
         Assert.Equal(5, task.RepeatIntervalMinutes);
 
-        var invalid = await client.PutAsJsonAsync("/me/settings", new SettingsDto(0, 5, 90, 300));
+        var invalid = await client.PutAsJsonAsync("/me/settings", new SettingsDto(0, 5, [90, 300], 0));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+    }
 
-        var invalidWait = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, 0, 300));
-        Assert.Equal(HttpStatusCode.BadRequest, invalidWait.StatusCode);
+    [Fact]
+    public async Task Settings_rejects_wait_lists_it_cannot_honour()
+    {
+        var client = await LoginAsync(sub: "waits-sub");
+
+        // A zero-minute wait would nag again instantly.
+        var zeroWait = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, [0, 300], 0));
+        Assert.Equal(HttpStatusCode.BadRequest, zeroWait.StatusCode);
+
+        // No waits at all leaves the reminder with nothing to snooze by.
+        var noWaits = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, [], 0));
+        Assert.Equal(HttpStatusCode.BadRequest, noWaits.StatusCode);
+
+        var tooMany = await client.PutAsJsonAsync(
+            "/me/settings", new SettingsDto(30, 5, [1, 2, 3, 4, 5, 6, 7], 0));
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+
+        // The default must name a wait that exists.
+        var badIndex = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, [90, 300], 2));
+        Assert.Equal(HttpStatusCode.BadRequest, badIndex.StatusCode);
+
+        var negativeIndex = await client.PutAsJsonAsync("/me/settings", new SettingsDto(30, 5, [90, 300], -1));
+        Assert.Equal(HttpStatusCode.BadRequest, negativeIndex.StatusCode);
+
+        // Nothing above stuck: the user still has the defaults.
+        var settings = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
+        Assert.Equal([60, 240], settings!.WaitMinutes);
     }
 
     [Fact]

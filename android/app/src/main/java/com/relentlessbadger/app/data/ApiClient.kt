@@ -17,8 +17,8 @@ class ApiClient(private val session: SessionStore) : ApiProvider {
     private val json = Json {
         ignoreUnknownKeys = true
         // Always serialize every field. Without this, kotlinx omits values equal to
-        // their declared default (e.g. mediumWaitMinutes=60, longWaitMinutes=240), so
-        // the server sees them as 0 and rejects the settings PUT with a 400.
+        // their declared default (e.g. waitMinutes=[60, 240], defaultWaitIndex=0),
+        // so the server sees them as empty and rejects the settings PUT with a 400.
         encodeDefaults = true
     }
 

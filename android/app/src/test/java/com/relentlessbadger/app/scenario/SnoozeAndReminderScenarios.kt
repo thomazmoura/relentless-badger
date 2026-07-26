@@ -8,8 +8,8 @@ import org.junit.Test
 class SnoozeAndReminderScenarios : ScenarioTest() {
 
     @Test
-    fun `a medium snooze pushes the next nag out, dismisses the notification and never touches the server`() = scenario {
-        givenLocalSettings(60, 15, mediumWaitMinutes = 90, longWaitMinutes = 300)
+    fun `a snooze pushes the next nag out, dismisses the notification and never touches the server`() = scenario {
+        givenLocalSettings(60, 15, waitMinutes = listOf(90, 300))
         givenOffline()
         val task = whenTaskCreated("water plants")
 
@@ -22,16 +22,44 @@ class SnoozeAndReminderScenarios : ScenarioTest() {
     }
 
     @Test
-    fun `a long snooze does the same with the long wait`() = scenario {
-        givenLocalSettings(60, 15, mediumWaitMinutes = 90, longWaitMinutes = 300)
+    fun `any configured wait works the same way, however far out it reaches`() = scenario {
+        givenLocalSettings(60, 15, waitMinutes = listOf(15, 90, 300, 480))
         givenOffline()
         val task = whenTaskCreated("water plants")
 
-        whenSnoozed(task.id, 300)
+        whenSnoozed(task.id, 480)
 
-        assertEquals(clock.now() + 300 * MINUTE, localTask(task.id).nextFireAtMillis)
-        thenAlarmScheduledAt(task.id, clock.now() + 300 * MINUTE)
+        assertEquals(clock.now() + 480 * MINUTE, localTask(task.id).nextFireAtMillis)
+        thenAlarmScheduledAt(task.id, clock.now() + 480 * MINUTE)
         thenNothingPushed()
+    }
+
+    @Test
+    fun `snoozing until an exact time parks the nag there without rewriting the schedule`() = scenario {
+        givenOffline()
+        val task = whenTaskCreated("water plants")
+        val tomorrowMorning = clock.now() + 17 * 60 * MINUTE
+
+        whenSnoozedUntil(task.id, tomorrowMorning)
+
+        val snoozed = localTask(task.id)
+        assertEquals(tomorrowMorning, snoozed.nextFireAtMillis)
+        // The task itself is untouched: same start time, same nag interval.
+        assertEquals(task.firstWarningAtMillis, snoozed.firstWarningAtMillis)
+        assertEquals(task.repeatIntervalMinutes, snoozed.repeatIntervalMinutes)
+        thenAlarmScheduledAt(task.id, tomorrowMorning)
+        assertTrue(alarms.dismissed.contains(task.id))
+        thenNothingPushed()
+    }
+
+    @Test
+    fun `snoozing until a time in the past is ignored rather than firing instantly`() = scenario {
+        givenOffline()
+        val task = whenTaskCreated("water plants")
+
+        whenSnoozedUntil(task.id, clock.now() - 5 * MINUTE)
+
+        assertEquals(task.nextFireAtMillis, localTask(task.id).nextFireAtMillis)
     }
 
     @Test
@@ -63,8 +91,10 @@ class SnoozeAndReminderScenarios : ScenarioTest() {
     }
 
     @Test
-    fun `when a reminder fires it nags with the configured waits and schedules the next repeat`() = scenario {
-        givenLocalSettings(60, 15, mediumWaitMinutes = 45, longWaitMinutes = 120)
+    fun `when a reminder fires it offers the default wait and schedules the next repeat`() = scenario {
+        // The notification's one-tap button uses the wait the user marked default,
+        // which is not necessarily the first one in the list.
+        givenLocalSettings(60, 15, waitMinutes = listOf(15, 45, 120), defaultWaitIndex = 1)
         givenOffline()
         val task = whenTaskCreated("water plants")
         whenTimeAdvancesMinutes(60)
@@ -73,10 +103,23 @@ class SnoozeAndReminderScenarios : ScenarioTest() {
 
         val shown = alarms.shownReminders.single()
         assertEquals(task.id, shown.task.id)
-        assertEquals(45, shown.mediumWaitMinutes)
-        assertEquals(120, shown.longWaitMinutes)
+        assertEquals(45, shown.defaultWaitMinutes)
         assertEquals(clock.now() + 15 * MINUTE, localTask(task.id).nextFireAtMillis)
         thenAlarmScheduledAt(task.id, clock.now() + 15 * MINUTE)
+    }
+
+    @Test
+    fun `an out-of-range default index falls back to the first wait instead of crashing`() = scenario {
+        // A stale default can outlive the wait it pointed at, e.g. a shorter list
+        // arriving from another device.
+        givenLocalSettings(60, 15, waitMinutes = listOf(20, 90), defaultWaitIndex = 5)
+        givenOffline()
+        val task = whenTaskCreated("water plants")
+        whenTimeAdvancesMinutes(60)
+
+        whenReminderFires(task.id)
+
+        assertEquals(20, alarms.shownReminders.single().defaultWaitMinutes)
     }
 
     @Test
