@@ -100,7 +100,7 @@ interface OpenTaskDao {
 
 @Database(
     entities = [OpenTaskEntity::class, TitleHistoryEntity::class, CompletedTaskEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class BadgerDb : RoomDatabase() {
@@ -153,6 +153,13 @@ abstract class BadgerDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Everything closed before cancelling existed was genuinely done.
                 db.execSQL("ALTER TABLE completed_tasks ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Nothing was dismissed before the user could dismiss anything.
+                db.execSQL("ALTER TABLE title_history ADD COLUMN dismissed INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

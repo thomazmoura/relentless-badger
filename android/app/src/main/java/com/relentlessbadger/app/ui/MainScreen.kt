@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,6 +57,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -114,6 +116,19 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(viewModel.dismissedSuggestion) {
+        viewModel.dismissedSuggestion?.let { title ->
+            val result = snackbarHostState.showSnackbar(
+                message = "Removed \"$title\" from suggestions",
+                actionLabel = "Undo",
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDismissSuggestion(title)
+            }
+            viewModel.dismissedSuggestion = null
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -128,7 +143,10 @@ fun MainScreen(
                 },
             )
         },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
+        // Suggestions are dismissed with the keyboard up, and edge-to-edge means
+        // adjustResize doesn't lift the window — so the undo snackbar has to
+        // dodge the IME itself or it appears behind it.
+        snackbarHost = { SnackbarHost(snackbarHostState, modifier = Modifier.imePadding()) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -360,7 +378,9 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { addOrPickTime(suggestion) }
-                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                                // The remove button's 48.dp touch target sets the
+                                // row height, so the row itself barely pads.
+                                .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
                         ) {
                             Icon(
                                 Icons.Filled.History,
@@ -372,8 +392,15 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
                                 style = MaterialTheme.typography.bodyLarge,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 12.dp),
+                                modifier = Modifier.weight(1f).padding(start = 12.dp),
                             )
+                            IconButton(onClick = { viewModel.dismissSuggestion(suggestion) }) {
+                                Icon(
+                                    Icons.Filled.Close,
+                                    contentDescription = "Remove \"$suggestion\" from suggestions",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                     }
                 }

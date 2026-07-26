@@ -133,6 +133,10 @@ class BadgerScenario {
         fail("expected the server URL change to be rejected")
     }
 
+    suspend fun whenSuggestionDismissed(title: String) = repository.dismissTitle(title)
+
+    suspend fun whenSuggestionDismissalUndone(title: String) = repository.restoreTitle(title)
+
     suspend fun whenSyncRuns() = repository.sync()
 
     suspend fun whenSyncFailsWith(check: (Exception) -> Boolean = { true }) {

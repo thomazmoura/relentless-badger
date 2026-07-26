@@ -22,6 +22,7 @@ class AppContainer(context: Context) {
         .addMigrations(
             BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
             BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+            BadgerDb.MIGRATION_6_7,
         )
         .build()
     val taskDao = db.openTaskDao()

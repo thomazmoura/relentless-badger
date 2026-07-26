@@ -256,6 +256,11 @@ class TaskRepository(
 
     suspend fun titles(): List<String> = titleDao.getRanked()
 
+    /** Hides a title from autocomplete without forgetting it, so sync can't relearn it. */
+    suspend fun dismissTitle(title: String) = titleDao.dismiss(title)
+
+    suspend fun restoreTitle(title: String) = titleDao.restore(title)
+
     /**
      * Push local changes, then pull server state. Each phase leaves the data
      * consistent if a later one fails: pending flags survive until their push

@@ -45,6 +45,7 @@ class MigrationTest {
             .addMigrations(
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -98,6 +99,7 @@ class MigrationTest {
             .addMigrations(
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -156,6 +158,7 @@ class MigrationTest {
             .addMigrations(
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -220,6 +223,7 @@ class MigrationTest {
             .addMigrations(
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7,
             )
             .allowMainThreadQueries()
             .build()
@@ -229,6 +233,65 @@ class MigrationTest {
                 assertEquals("walk dog", done.title)
                 assertEquals(9000L, done.completedAtMillis)
                 assertFalse("history from before cancelling existed was done", done.cancelled)
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `existing v6 title history survives the migration to v7 as not dismissed`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbFile = context.getDatabasePath("migration-test-v6.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        // The exact schema Room generated for version 6 (pre dismissed), with a
+        // learned title an existing install would already be suggesting.
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `open_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                    "`initialDelayMinutes` INTEGER NOT NULL, `repeatIntervalMinutes` INTEGER NOT NULL, " +
+                    "`firstWarningAtMillis` INTEGER, `nextFireAtMillis` INTEGER NOT NULL, " +
+                    "`recurEveryN` INTEGER, `recurUnit` TEXT, `recurDaysOfWeek` INTEGER, " +
+                    "`seriesId` TEXT, `pendingDone` INTEGER NOT NULL, `pendingCreate` INTEGER NOT NULL, " +
+                    "`pendingUpdate` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `title_history` (`title` TEXT NOT NULL, " +
+                    "`useCount` INTEGER NOT NULL, `lastUsedAtMillis` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`title`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `completed_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `completedAtMillis` INTEGER NOT NULL, " +
+                    "`seriesId` TEXT, `cancelled` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_completed_tasks_completedAtMillis` " +
+                    "ON `completed_tasks` (`completedAtMillis`)",
+            )
+            old.execSQL("INSERT INTO title_history VALUES ('water plants', 3, 1000)")
+            old.version = 6
+        }
+
+        val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test-v6.db")
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7,
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            runBlocking {
+                val dao = db.titleHistoryDao()
+                assertEquals(listOf("water plants"), dao.getRanked())
+                assertFalse("nothing was dismissed before v7", dao.getByTitle("water plants")!!.dismissed)
+
+                dao.dismiss("water plants")
+                assertEquals(emptyList<String>(), dao.getRanked())
             }
         } finally {
             db.close()

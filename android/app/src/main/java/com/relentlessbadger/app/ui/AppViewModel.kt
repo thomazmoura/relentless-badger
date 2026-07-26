@@ -86,6 +86,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         else Fuzzy.rank(quickAddText, titleHistory).filterNot { it.equals(quickAddText, ignoreCase = true) }
     }
 
+    /** Title just removed from suggestions, awaiting its undo snackbar. */
+    var dismissedSuggestion by mutableStateOf<String?>(null)
+
     var busy by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
@@ -148,6 +151,22 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         quickAddRecurrence = null
         launchBusy {
             container.repository.addTask(trimmed, firstWarningAtMillis, recurrence)
+            titleHistory = container.repository.titles()
+        }
+    }
+
+    /** Drops a title from autocomplete. Not [launchBusy]: it mustn't block adding. */
+    fun dismissSuggestion(title: String) {
+        viewModelScope.launch {
+            container.repository.dismissTitle(title)
+            titleHistory = container.repository.titles()
+            dismissedSuggestion = title
+        }
+    }
+
+    fun undoDismissSuggestion(title: String) {
+        viewModelScope.launch {
+            container.repository.restoreTitle(title)
             titleHistory = container.repository.titles()
         }
     }
