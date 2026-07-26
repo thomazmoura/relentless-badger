@@ -45,6 +45,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     var selectedCalendarDate by mutableStateOf<LocalDate>(LocalDate.now())
 
+    /** Cancelled tasks are history, but not achievements — opt in to see them. */
+    var showCancelledInCalendar by mutableStateOf(false)
+
     fun showCalendarMonth(month: YearMonth) {
         calendarMonthFlow.value = month
         val today = LocalDate.now()
@@ -152,6 +155,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun completeTask(id: String) {
         viewModelScope.launch {
             container.repository.completeTask(id)
+        }
+    }
+
+    fun cancelTask(id: String) {
+        viewModelScope.launch {
+            container.repository.cancelTask(id)
         }
     }
 

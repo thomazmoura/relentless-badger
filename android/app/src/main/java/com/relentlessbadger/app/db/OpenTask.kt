@@ -100,7 +100,7 @@ interface OpenTaskDao {
 
 @Database(
     entities = [OpenTaskEntity::class, TitleHistoryEntity::class, CompletedTaskEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class BadgerDb : RoomDatabase() {
@@ -146,6 +146,13 @@ abstract class BadgerDb : RoomDatabase() {
                     "CREATE INDEX IF NOT EXISTS `index_completed_tasks_completedAtMillis` " +
                         "ON `completed_tasks` (`completedAtMillis`)",
                 )
+            }
+        }
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Everything closed before cancelling existed was genuinely done.
+                db.execSQL("ALTER TABLE completed_tasks ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
             }
         }
     }

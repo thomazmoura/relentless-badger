@@ -17,14 +17,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +36,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -43,6 +47,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.CalendarEntry
@@ -63,8 +68,10 @@ fun CalendarScreen(viewModel: AppViewModel) {
     val selectedDate = viewModel.selectedCalendarDate
     val use24Hour = DateFormat.is24HourFormat(LocalContext.current)
 
-    val entries = remember(tasks, completed, month) {
-        buildMonthEntries(tasks, completed, month)
+    val showCancelled = viewModel.showCancelledInCalendar
+
+    val entries = remember(tasks, completed, month, showCancelled) {
+        buildMonthEntries(tasks, completed, month, includeCancelled = showCancelled)
     }
 
     Scaffold(
@@ -135,12 +142,24 @@ fun CalendarScreen(viewModel: AppViewModel) {
             Spacer(Modifier.height(8.dp))
             HorizontalDivider()
 
-            Text(
-                selectedDate.format(selectedDayFormatter),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    selectedDate.format(selectedDayFormatter),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = showCancelled,
+                    onClick = {
+                        viewModel.showCancelledInCalendar = !showCancelled
+                    },
+                    label = { Text("Show cancelled") },
+                )
+            }
 
             val dayEntries = entries[selectedDate].orEmpty()
             if (dayEntries.isEmpty()) {
@@ -151,7 +170,12 @@ fun CalendarScreen(viewModel: AppViewModel) {
                     modifier = Modifier.padding(vertical = 16.dp),
                 )
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                // LazyColumn anchors its scroll on the first visible item's key,
+                // so revealing cancellations (which sort in by time, often above
+                // the current top) would silently push them out of view.
+                val listState = rememberLazyListState()
+                LaunchedEffect(showCancelled, selectedDate) { listState.scrollToItem(0) }
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(dayEntries, key = { "${it.taskId}:${it.atMillis}" }) { entry ->
                         CalendarEntryRow(entry, use24Hour)
                         HorizontalDivider()
@@ -228,14 +252,17 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
         Icon(
             imageVector = when (entry.kind) {
                 CalendarEntryKind.COMPLETED -> Icons.Filled.Check
+                CalendarEntryKind.CANCELLED -> Icons.Filled.Close
                 CalendarEntryKind.SCHEDULED -> Icons.Filled.Schedule
             },
             contentDescription = when (entry.kind) {
                 CalendarEntryKind.COMPLETED -> "Completed"
+                CalendarEntryKind.CANCELLED -> "Cancelled"
                 CalendarEntryKind.SCHEDULED -> "Scheduled"
             },
             tint = when (entry.kind) {
                 CalendarEntryKind.COMPLETED -> MaterialTheme.colorScheme.primary
+                CalendarEntryKind.CANCELLED -> MaterialTheme.colorScheme.onSurfaceVariant
                 CalendarEntryKind.SCHEDULED -> MaterialTheme.colorScheme.onSurfaceVariant
             },
             modifier = Modifier.size(20.dp),
@@ -247,10 +274,17 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
                 style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                // A cancellation must never read as an accomplishment.
+                textDecoration = if (entry.kind == CalendarEntryKind.CANCELLED) {
+                    TextDecoration.LineThrough
+                } else {
+                    null
+                },
             )
             Text(
                 when (entry.kind) {
                     CalendarEntryKind.COMPLETED -> "done ${formatDateTime(entry.atMillis, use24Hour)}"
+                    CalendarEntryKind.CANCELLED -> "cancelled ${formatDateTime(entry.atMillis, use24Hour)}"
                     CalendarEntryKind.SCHEDULED -> "starts ${formatDateTime(entry.atMillis, use24Hour)}"
                 },
                 style = MaterialTheme.typography.bodySmall,

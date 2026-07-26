@@ -8,6 +8,10 @@ public class TaskItem
     public DateTime CreatedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 
+    // How the task was closed: cancelled means "closed without doing it", so
+    // reports can leave it out. Only meaningful once CompletedAt is set.
+    public bool Cancelled { get; set; }
+
     // Snapshotted from the user's defaults at creation time so that changing
     // the defaults later does not affect tasks already being nagged about.
     public int InitialDelayMinutes { get; set; }

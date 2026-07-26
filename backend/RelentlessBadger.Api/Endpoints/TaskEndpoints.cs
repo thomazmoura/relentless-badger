@@ -124,7 +124,14 @@ public static class TaskEndpoints
                 return Results.NotFound();
             }
 
-            task.CompletedAt ??= request?.CompletedAt?.ToUniversalTime() ?? DateTime.UtcNow;
+            // Idempotent: a re-pushed close (or a cancel racing a complete) must
+            // neither move the completion time nor rewrite how it was closed.
+            if (task.CompletedAt is null)
+            {
+                task.CompletedAt = request?.CompletedAt?.ToUniversalTime() ?? DateTime.UtcNow;
+                task.Cancelled = request?.Cancelled ?? false;
+            }
+
             await db.SaveChangesAsync();
             return Results.Ok(TaskDto.From(task));
         });

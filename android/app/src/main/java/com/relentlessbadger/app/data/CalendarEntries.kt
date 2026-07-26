@@ -7,7 +7,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 
-enum class CalendarEntryKind { COMPLETED, SCHEDULED }
+enum class CalendarEntryKind { COMPLETED, CANCELLED, SCHEDULED }
 
 data class CalendarEntry(
     val taskId: String,
@@ -22,24 +22,33 @@ data class CalendarEntry(
  * they happened, open tasks on the day they are scheduled to start. Recurring
  * tasks are expanded to every occurrence inside the month, so future days show
  * what will fire on them. Each day's entries are sorted ascending by time.
+ *
+ * Cancelled tasks are left out unless [includeCancelled]: a day that only holds
+ * cancellations then has no entries at all, so it also loses its calendar dot.
  */
 fun buildMonthEntries(
     openTasks: List<OpenTaskEntity>,
     completed: List<CompletedTaskEntity>,
     month: YearMonth,
     zone: ZoneId = ZoneId.systemDefault(),
+    includeCancelled: Boolean = false,
 ): Map<LocalDate, List<CalendarEntry>> {
     val monthStart = month.atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val monthEnd = month.plusMonths(1).atDay(1).atStartOfDay(zone).toInstant().toEpochMilli()
     val entries = mutableListOf<CalendarEntry>()
 
     for (task in completed) {
+        if (task.cancelled && !includeCancelled) continue
         if (task.completedAtMillis in monthStart until monthEnd) {
             entries += CalendarEntry(
                 taskId = task.id,
                 title = task.title,
                 atMillis = task.completedAtMillis,
-                kind = CalendarEntryKind.COMPLETED,
+                kind = if (task.cancelled) {
+                    CalendarEntryKind.CANCELLED
+                } else {
+                    CalendarEntryKind.COMPLETED
+                },
                 recurring = task.seriesId != null,
             )
         }

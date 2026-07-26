@@ -47,10 +47,12 @@ data class CreateTaskRequest(
 )
 
 // Carries when the task was actually completed on the device, so a completion
-// flushed by a later sync keeps its true time; null means "now".
+// flushed by a later sync keeps its true time; null means "now". cancelled
+// closes the task without crediting it as done.
 @Serializable
 data class CompleteTaskRequest(
     val completedAt: String? = null,
+    val cancelled: Boolean = false,
 )
 
 // Full-state schedule update: null on a nullable field means "clear it".
@@ -77,4 +79,6 @@ data class TaskDto(
     val recurUnit: String? = null,
     val recurDaysOfWeek: Int? = null,
     val seriesId: String? = null,
+    // Only meaningful with completedAt set: the task was closed, not done.
+    val cancelled: Boolean = false,
 )

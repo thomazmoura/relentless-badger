@@ -95,6 +95,52 @@ public class ApiTests : IClassFixture<TestAppFactory>
     }
 
     [Fact]
+    public async Task Cancelling_closes_the_task_but_flags_it_as_not_done()
+    {
+        var client = await LoginAsync(sub: "cancelled-sub");
+        var cancelled = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("skip today")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+        var completed = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("actually did it")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+
+        var response = await client.PostAsJsonAsync(
+            $"/tasks/{cancelled!.Id}/complete", new CompleteTaskRequest(Cancelled: true));
+        response.EnsureSuccessStatusCode();
+        Assert.True((await response.Content.ReadFromJsonAsync<TaskDto>())!.Cancelled);
+
+        (await client.PostAsJsonAsync($"/tasks/{completed!.Id}/complete", new CompleteTaskRequest()))
+            .EnsureSuccessStatusCode();
+
+        // Both are closed and both come back on the done list — cancelling keeps
+        // the record, it is the reports that filter it out.
+        Assert.Empty(await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=open") ?? []);
+        var done = await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=done") ?? [];
+        Assert.True(done.Single(t => t.Id == cancelled.Id).Cancelled);
+        Assert.False(done.Single(t => t.Id == completed.Id).Cancelled);
+    }
+
+    [Fact]
+    public async Task Cancelling_an_already_completed_task_changes_nothing()
+    {
+        var client = await LoginAsync(sub: "cancel-idempotent-sub");
+        var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("already done")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+
+        var completedAt = new DateTime(2026, 7, 20, 6, 15, 0, DateTimeKind.Utc);
+        (await client.PostAsJsonAsync($"/tasks/{task!.Id}/complete", new CompleteTaskRequest(completedAt)))
+            .EnsureSuccessStatusCode();
+
+        var response = await client.PostAsJsonAsync(
+            $"/tasks/{task.Id}/complete",
+            new CompleteTaskRequest(completedAt.AddHours(3), Cancelled: true));
+        response.EnsureSuccessStatusCode();
+        var after = await response.Content.ReadFromJsonAsync<TaskDto>();
+        // Re-read from the store, so the timestamp comes back kind-less.
+        Assert.Equal(completedAt, DateTime.SpecifyKind(after!.CompletedAt!.Value, DateTimeKind.Utc));
+        Assert.False(after.Cancelled);
+    }
+
+    [Fact]
     public async Task First_warning_time_round_trips_and_defaults_to_null()
     {
         var client = await LoginAsync(sub: "first-warning-sub");

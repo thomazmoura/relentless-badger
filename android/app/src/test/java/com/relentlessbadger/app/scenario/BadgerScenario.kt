@@ -69,8 +69,11 @@ class BadgerScenario {
     fun givenServerHasOpenTask(title: String, firstWarningAtMillis: Long? = null): TaskDto =
         server.seedOpenTask(title, firstWarningAtMillis = firstWarningAtMillis)
 
-    fun givenServerHasCompletedTask(title: String, completedAtMillis: Long): TaskDto =
-        server.seedCompletedTask(title, completedAtMillis)
+    fun givenServerHasCompletedTask(
+        title: String,
+        completedAtMillis: Long,
+        cancelled: Boolean = false,
+    ): TaskDto = server.seedCompletedTask(title, completedAtMillis, cancelled = cancelled)
 
     suspend fun givenLocalSettings(
         initialDelayMinutes: Int,
@@ -99,6 +102,8 @@ class BadgerScenario {
     ): OpenTaskEntity = repository.addTask(title, firstWarningAtMillis, recurrence)
 
     suspend fun whenTaskCompleted(id: String) = repository.completeTask(id)
+
+    suspend fun whenTaskCancelled(id: String) = repository.cancelTask(id)
 
     suspend fun whenScheduleEdited(
         id: String,
@@ -186,11 +191,18 @@ class BadgerScenario {
     suspend fun completedCache(): List<CompletedTaskEntity> =
         completedDao.observeBetween(Long.MIN_VALUE, Long.MAX_VALUE).first()
 
-    suspend fun thenCompletionCached(title: String, atMillis: Long? = null) {
+    suspend fun thenCompletionCached(
+        title: String,
+        atMillis: Long? = null,
+        cancelled: Boolean? = null,
+    ) {
         val entry = completedCache().firstOrNull { it.title == title }
             ?: error("expected a cached completion titled '$title'")
         if (atMillis != null) {
             assertEquals("cached completion time for '$title'", atMillis, entry.completedAtMillis)
+        }
+        if (cancelled != null) {
+            assertEquals("cached cancelled flag for '$title'", cancelled, entry.cancelled)
         }
     }
 

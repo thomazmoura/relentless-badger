@@ -45,8 +45,9 @@ public record CreateTaskRequest(
     Guid? SeriesId = null);
 
 // CompletedAt lets an offline-first client report when the task was actually
-// completed on the device; omitted (or an empty body) means "now".
-public record CompleteTaskRequest(DateTime? CompletedAt = null);
+// completed on the device; omitted (or an empty body) means "now". Cancelled
+// closes the task without crediting it as done.
+public record CompleteTaskRequest(DateTime? CompletedAt = null, bool Cancelled = false);
 
 // Full-state update: the client always sends the complete desired schedule,
 // so null on a nullable field means "clear it" (no PATCH absent-vs-null games).
@@ -69,10 +70,12 @@ public record TaskDto(
     int? RecurEveryN,
     string? RecurUnit,
     int? RecurDaysOfWeek,
-    Guid? SeriesId)
+    Guid? SeriesId,
+    bool Cancelled)
 {
     public static TaskDto From(TaskItem task) => new(
         task.Id, task.Title, task.CreatedAt, task.CompletedAt,
         task.InitialDelayMinutes, task.RepeatIntervalMinutes, task.FirstWarningAt,
-        task.RecurEveryN, task.RecurUnit, task.RecurDaysOfWeek, task.SeriesId);
+        task.RecurEveryN, task.RecurUnit, task.RecurDaysOfWeek, task.SeriesId,
+        task.Cancelled);
 }

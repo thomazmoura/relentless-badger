@@ -39,14 +39,20 @@ class CalendarEntriesTest {
         seriesId = recurrence?.let { id },
     )
 
-    private fun completed(id: String, title: String, atMillis: Long, seriesId: String? = null) =
-        CompletedTaskEntity(id, title, atMillis, seriesId)
+    private fun completed(
+        id: String,
+        title: String,
+        atMillis: Long,
+        seriesId: String? = null,
+        cancelled: Boolean = false,
+    ) = CompletedTaskEntity(id, title, atMillis, seriesId, cancelled)
 
     private fun days(
         openTasks: List<OpenTaskEntity> = emptyList(),
         completedTasks: List<CompletedTaskEntity> = emptyList(),
         month: YearMonth = july,
-    ) = buildMonthEntries(openTasks, completedTasks, month, zone)
+        includeCancelled: Boolean = false,
+    ) = buildMonthEntries(openTasks, completedTasks, month, zone, includeCancelled)
 
     @Test
     fun `completed task lands on its local calendar day`() {
@@ -195,6 +201,30 @@ class CalendarEntriesTest {
         )
         val day = result.getValue(LocalDate.of(2026, 7, 15))
         assertEquals(listOf("morning", "scheduled", "evening"), day.map { it.title })
+    }
+
+    @Test
+    fun `cancelled tasks are left out by default, leaving their day empty`() {
+        val cancelled = listOf(completed("a", "skipped", at(2026, 7, 10, 14), cancelled = true))
+        // No entries at all for that day, which is also what clears its dot.
+        assertTrue(days(completedTasks = cancelled).isEmpty())
+    }
+
+    @Test
+    fun `cancelled tasks appear as cancelled when asked for`() {
+        val result = days(
+            completedTasks = listOf(
+                completed("a", "skipped", at(2026, 7, 10, 14), cancelled = true),
+                completed("b", "walk dog", at(2026, 7, 10, 15)),
+            ),
+            includeCancelled = true,
+        )
+        val day = result.getValue(LocalDate.of(2026, 7, 10))
+        assertEquals(listOf("skipped", "walk dog"), day.map { it.title })
+        assertEquals(
+            listOf(CalendarEntryKind.CANCELLED, CalendarEntryKind.COMPLETED),
+            day.map { it.kind },
+        )
     }
 
     @Test

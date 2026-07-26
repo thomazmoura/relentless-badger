@@ -60,13 +60,17 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
         id: String = UUID.randomUUID().toString(),
         createdAtMillis: Long = completedAtMillis,
         seriesId: String? = null,
+        cancelled: Boolean = false,
     ): TaskDto {
         val dto = seedOpenTask(
             title,
             id = id,
             createdAtMillis = createdAtMillis,
             seriesId = seriesId,
-        ).copy(completedAt = Instant.ofEpochMilli(completedAtMillis).toString())
+        ).copy(
+            completedAt = Instant.ofEpochMilli(completedAtMillis).toString(),
+            cancelled = cancelled,
+        )
         tasks[id] = dto
         return dto
     }
@@ -170,8 +174,12 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
         gate()
         val task = tasks[id] ?: throw httpError(404)
         receivedCompletions += id
+        // Mirrors the server: a re-pushed close neither moves the time nor
+        // rewrites how the task was closed.
+        if (task.completedAt != null) return task
         val done = task.copy(
             completedAt = request.completedAt ?: Instant.ofEpochMilli(clock.now()).toString(),
+            cancelled = request.cancelled,
         )
         tasks[id] = done
         return done

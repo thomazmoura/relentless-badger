@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.Flow
  * the moment a task is completed on this device (with the local clock's
  * timestamp) and reconciled from the server's done list during sync — the id
  * is the task id, shared with open_tasks, so both paths dedupe naturally.
+ *
+ * A cancelled row was closed without being done — kept for the record, but left
+ * out of the calendar's history unless the user asks to see cancellations.
  */
 @Entity(
     tableName = "completed_tasks",
@@ -25,6 +28,7 @@ data class CompletedTaskEntity(
     val title: String,
     val completedAtMillis: Long,
     val seriesId: String? = null,
+    val cancelled: Boolean = false,
 )
 
 @Dao

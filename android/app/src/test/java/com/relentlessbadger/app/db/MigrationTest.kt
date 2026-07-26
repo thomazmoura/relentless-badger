@@ -42,7 +42,10 @@ class MigrationTest {
         }
 
         val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test.db")
-            .addMigrations(BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4, BadgerDb.MIGRATION_4_5)
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -92,7 +95,10 @@ class MigrationTest {
         }
 
         val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test-v3.db")
-            .addMigrations(BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4, BadgerDb.MIGRATION_4_5)
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -147,7 +153,10 @@ class MigrationTest {
         }
 
         val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test-v4.db")
-            .addMigrations(BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4, BadgerDb.MIGRATION_4_5)
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+            )
             .allowMainThreadQueries()
             .build()
         try {
@@ -164,6 +173,62 @@ class MigrationTest {
                     listOf("walk dog"),
                     dao.observeBetween(0L, 10_000L).first().map { it.title },
                 )
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `existing v5 completions survive the migration to v6 as not cancelled`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbFile = context.getDatabasePath("migration-test-v5.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        // The exact schema Room generated for version 5 (pre cancelled), with a
+        // completion an existing install would already have cached.
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `open_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                    "`initialDelayMinutes` INTEGER NOT NULL, `repeatIntervalMinutes` INTEGER NOT NULL, " +
+                    "`firstWarningAtMillis` INTEGER, `nextFireAtMillis` INTEGER NOT NULL, " +
+                    "`recurEveryN` INTEGER, `recurUnit` TEXT, `recurDaysOfWeek` INTEGER, " +
+                    "`seriesId` TEXT, `pendingDone` INTEGER NOT NULL, `pendingCreate` INTEGER NOT NULL, " +
+                    "`pendingUpdate` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `title_history` (`title` TEXT NOT NULL, " +
+                    "`useCount` INTEGER NOT NULL, `lastUsedAtMillis` INTEGER NOT NULL, " +
+                    "PRIMARY KEY(`title`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `completed_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `completedAtMillis` INTEGER NOT NULL, " +
+                    "`seriesId` TEXT, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_completed_tasks_completedAtMillis` " +
+                    "ON `completed_tasks` (`completedAtMillis`)",
+            )
+            old.execSQL("INSERT INTO completed_tasks VALUES ('done-1', 'walk dog', 9000, NULL)")
+            old.version = 5
+        }
+
+        val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test-v5.db")
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            runBlocking {
+                val done = db.completedTaskDao().observeBetween(0L, 10_000L).first().single()
+                assertEquals("walk dog", done.title)
+                assertEquals(9000L, done.completedAtMillis)
+                assertFalse("history from before cancelling existed was done", done.cancelled)
             }
         } finally {
             db.close()

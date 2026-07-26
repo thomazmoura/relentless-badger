@@ -4,7 +4,10 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.text.format.DateFormat
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,10 +16,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -32,6 +37,8 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
@@ -62,7 +69,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_WAIT_MINUTES
@@ -182,6 +191,7 @@ fun MainScreen(
                             nowMillis = nowMillis,
                             use24Hour = use24Hour,
                             onDone = { viewModel.completeTask(task.id) },
+                            onCancel = { viewModel.cancelTask(task.id) },
                             onSnooze = { viewModel.waitPickerTask = task },
                             onEdit = { viewModel.beginEditSchedule(task) },
                         )
@@ -203,6 +213,7 @@ fun MainScreen(
                                 nowMillis = nowMillis,
                                 use24Hour = use24Hour,
                                 onDone = { viewModel.completeTask(task.id) },
+                                onCancel = { viewModel.cancelTask(task.id) },
                                 onSnooze = { viewModel.waitPickerTask = task },
                                 onEdit = { viewModel.beginEditSchedule(task) },
                             )
@@ -526,6 +537,7 @@ private fun TaskRow(
     nowMillis: Long,
     use24Hour: Boolean,
     onDone: () -> Unit,
+    onCancel: () -> Unit,
     onSnooze: () -> Unit,
     onEdit: () -> Unit,
 ) {
@@ -569,8 +581,51 @@ private fun TaskRow(
             }
         }
 
-        FilledTonalIconButton(onClick = onDone) {
-            Icon(Icons.Filled.Check, contentDescription = "Mark done")
+        DoneButton(onDone = onDone, onCancel = onCancel)
+    }
+}
+
+/**
+ * Tap closes the task as done; long-press offers the secondary way out —
+ * cancelling, which closes it without crediting it. Hand-rolled rather than a
+ * FilledTonalIconButton because the M3 icon buttons take no onLongClick; the
+ * size and colours mirror the tonal button so the row looks unchanged.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun DoneButton(onDone: () -> Unit, onCancel: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+
+    Box {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.secondaryContainer)
+                .combinedClickable(
+                    role = Role.Button,
+                    onClickLabel = "Mark done",
+                    onLongClickLabel = "Other ways to close this task",
+                    onClick = onDone,
+                    onLongClick = { menuOpen = true },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.Filled.Check,
+                contentDescription = "Mark done",
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Cancel task") },
+                leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onCancel()
+                },
+            )
         }
     }
 }

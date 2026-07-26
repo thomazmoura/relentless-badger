@@ -85,12 +85,22 @@ class TaskRepository(
      * Completing a recurring task spawns the next occurrence as a fresh
      * pendingCreate row, so recurrence works offline too.
      */
-    suspend fun completeTask(id: String) {
+    suspend fun completeTask(id: String) = closeTask(id, cancelled = false)
+
+    /**
+     * Closes the task without doing it: same effect as [completeTask] — nagging
+     * stops, the record is kept, a recurring occurrence still spawns the next
+     * one — but flagged so reports can leave it out.
+     */
+    suspend fun cancelTask(id: String) = closeTask(id, cancelled = true)
+
+    private suspend fun closeTask(id: String, cancelled: Boolean) {
         val task = dao.getById(id) ?: return
         // Cached before the open row is flagged (and eventually deleted by the
-        // sync flush), so the calendar's history survives the completion.
+        // sync flush), so the calendar's history survives the completion. It is
+        // also what carries `cancelled` until the push happens.
         completedDao.upsert(
-            CompletedTaskEntity(task.id, task.title, timeSource.now(), task.seriesId),
+            CompletedTaskEntity(task.id, task.title, timeSource.now(), task.seriesId, cancelled),
         )
         dao.markPendingDone(id)
         scheduler.cancel(id)
@@ -287,6 +297,7 @@ class TaskRepository(
                 val completedAt = dto.completedAt ?: return@mapNotNull null
                 CompletedTaskEntity(
                     dto.id, dto.title, Instant.parse(completedAt).toEpochMilli(), dto.seriesId,
+                    dto.cancelled,
                 )
             },
         )
@@ -381,13 +392,15 @@ class TaskRepository(
         for (task in dao.getPendingDone()) {
             try {
                 // The cached completion row holds the moment the task was
-                // actually completed on this device; without it the server
-                // would stamp the completion with the sync time.
-                val completedAtMillis = completedDao.getById(task.id)?.completedAtMillis
+                // actually completed on this device (and whether it was
+                // cancelled); without it the server would stamp the completion
+                // with the sync time and record it as done.
+                val cached = completedDao.getById(task.id)
                 apiClient.api().completeTask(
                     task.id,
                     CompleteTaskRequest(
-                        completedAtMillis?.let { Instant.ofEpochMilli(it).toString() },
+                        cached?.completedAtMillis?.let { Instant.ofEpochMilli(it).toString() },
+                        cancelled = cached?.cancelled ?: false,
                     ),
                 )
                 dao.delete(task.id)
