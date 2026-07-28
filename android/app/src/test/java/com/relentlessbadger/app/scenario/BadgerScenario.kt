@@ -118,6 +118,13 @@ class BadgerScenario {
 
     suspend fun whenReminderFires(id: String) = repository.onReminderFired(id)
 
+    suspend fun whenNotificationsPaused(minutes: Int) = repository.pauseNotifications(minutes)
+
+    suspend fun whenNotificationsPausedUntil(atMillis: Long) =
+        repository.pauseNotificationsUntil(atMillis)
+
+    suspend fun whenNotificationsResumed() = repository.resumeNotifications()
+
     suspend fun whenBootReArmRuns() = repository.reArmAlarms()
 
     suspend fun whenSettingsSaved(settings: SettingsDto) = repository.updateSettings(settings)

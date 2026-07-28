@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -22,11 +23,15 @@ data class Session(
     val waitMinutes: List<Int>,
     // Index into [waitMinutes]: the wait the notification's one-tap button uses.
     val defaultWaitIndex: Int,
+    // While set and still in the future, every reminder is held back until then.
+    val pauseUntilMillis: Long?,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
     val defaultWaitMinutes: Int
         get() = waitMinutes.getOrElse(defaultWaitIndex) { waitMinutes.first() }
+
+    fun isPaused(nowMillis: Long): Boolean = (pauseUntilMillis ?: 0) > nowMillis
 }
 
 /**
@@ -38,6 +43,14 @@ interface SettingsStore {
     suspend fun current(): Session
     suspend fun saveBaseUrl(baseUrl: String)
     suspend fun saveSettings(settings: SettingsDto)
+
+    /**
+     * Holds every reminder back until [atMillis]; null resumes. Deliberately
+     * separate from [saveSettings]: a pause is about this device right now, so
+     * it never travels through the settings DTO — and a settings pull can't
+     * clobber it.
+     */
+    suspend fun savePauseUntil(atMillis: Long?)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -53,6 +66,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val REPEAT_INTERVAL = intPreferencesKey("repeat_interval_minutes")
         val WAIT_MINUTES = stringPreferencesKey("wait_minutes")
         val DEFAULT_WAIT_INDEX = intPreferencesKey("default_wait_index")
+        val PAUSE_UNTIL = longPreferencesKey("pause_until_millis")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -79,6 +93,7 @@ class SessionStore(private val context: Context) : SettingsStore {
                 prefs[Keys.WAIT_MINUTES], prefs[Keys.MEDIUM_WAIT], prefs[Keys.LONG_WAIT],
             ),
             defaultWaitIndex = prefs[Keys.DEFAULT_WAIT_INDEX] ?: 0,
+            pauseUntilMillis = prefs[Keys.PAUSE_UNTIL],
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -111,6 +126,12 @@ class SessionStore(private val context: Context) : SettingsStore {
             it[Keys.REPEAT_INTERVAL] = settings.repeatIntervalMinutes
             it[Keys.WAIT_MINUTES] = settings.waitMinutes.joinToString(",")
             it[Keys.DEFAULT_WAIT_INDEX] = settings.defaultWaitIndex
+        }
+    }
+
+    override suspend fun savePauseUntil(atMillis: Long?) {
+        context.dataStore.edit {
+            if (atMillis == null) it.remove(Keys.PAUSE_UNTIL) else it[Keys.PAUSE_UNTIL] = atMillis
         }
     }
 

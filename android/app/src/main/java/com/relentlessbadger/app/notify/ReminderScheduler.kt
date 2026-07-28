@@ -14,7 +14,15 @@ import com.relentlessbadger.app.db.OpenTaskEntity
  */
 interface ReminderScheduler {
     fun canScheduleExact(): Boolean
-    fun schedule(task: OpenTaskEntity)
+
+    /**
+     * Arms the task's alarm for [atMillis]. The time is passed explicitly rather
+     * than read off the entity because the two can differ: a paused app keeps
+     * the task's intended fire time in the database while arming the alarm for
+     * the end of the pause.
+     */
+    fun schedule(taskId: String, atMillis: Long)
+
     fun cancel(taskId: String)
 
     /** Clears the currently shown reminder without touching the scheduled alarm. */
@@ -32,16 +40,12 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
     override fun canScheduleExact(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
 
-    override fun schedule(task: OpenTaskEntity) {
-        val pendingIntent = reminderIntent(task.id)
+    override fun schedule(taskId: String, atMillis: Long) {
+        val pendingIntent = reminderIntent(taskId)
         if (canScheduleExact()) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP, task.nextFireAtMillis, pendingIntent,
-            )
+            alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pendingIntent)
         } else {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP, task.nextFireAtMillis, pendingIntent,
-            )
+            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pendingIntent)
         }
     }
 

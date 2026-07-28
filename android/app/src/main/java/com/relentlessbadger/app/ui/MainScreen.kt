@@ -28,6 +28,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
@@ -76,6 +78,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_WAIT_MINUTES
+import com.relentlessbadger.app.data.PAUSE_OPTIONS_MINUTES
+import com.relentlessbadger.app.data.deferPastPause
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.recurrence
@@ -103,6 +107,17 @@ fun MainScreen(
     val context = LocalContext.current
     val use24Hour = DateFormat.is24HourFormat(context)
     val waitMinutes = session?.waitMinutes ?: DEFAULT_WAIT_MINUTES
+    // Ticks so the "next nag" countdowns stay current, scheduled tasks move into
+    // the active section when their start time passes, and an expiring pause
+    // releases the UI on its own — all without any data change.
+    val nowMillis by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(15_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    val pauseUntilMillis = session?.pauseUntilMillis?.takeIf { it > nowMillis }
+    var pausePickerOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         requestNotificationPermission()
@@ -134,6 +149,13 @@ fun MainScreen(
             TopAppBar(
                 title = { Text("RelentlessBadger") },
                 actions = {
+                    PauseMenuButton(
+                        pauseUntilMillis = pauseUntilMillis,
+                        use24Hour = use24Hour,
+                        onPause = { minutes -> viewModel.pauseNotifications(minutes) },
+                        onPickDateTime = { pausePickerOpen = true },
+                        onResume = { viewModel.resumeNotifications() },
+                    )
                     IconButton(onClick = { viewModel.refresh(interactive = true) }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Sync")
                     }
@@ -170,6 +192,26 @@ fun MainScreen(
                 }
             }
 
+            // The icon alone is easy to miss, and a silent app with no visible
+            // reason for the silence is exactly the bug this feature could look like.
+            pauseUntilMillis?.let { until ->
+                Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 12.dp),
+                    ) {
+                        Text(
+                            "Reminders paused until ${formatDateTime(until, use24Hour)}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { viewModel.resumeNotifications() }) {
+                            Text("Resume")
+                        }
+                    }
+                }
+            }
+
             QuickAdd(viewModel, use24Hour)
 
             Spacer(Modifier.height(8.dp))
@@ -187,15 +229,6 @@ fun MainScreen(
                     )
                 }
             } else {
-                // Ticks so the "next nag" countdowns stay current and scheduled
-                // tasks move into the active section when their start time
-                // passes without any data change.
-                val nowMillis by produceState(System.currentTimeMillis()) {
-                    while (true) {
-                        delay(15_000)
-                        value = System.currentTimeMillis()
-                    }
-                }
                 // Keyed on the start time, not nextFire, so a snoozed task
                 // doesn't jump into "Scheduled".
                 val (scheduled, active) = tasks.partition {
@@ -207,6 +240,7 @@ fun MainScreen(
                             task = task,
                             scheduled = false,
                             nowMillis = nowMillis,
+                            pauseUntilMillis = pauseUntilMillis,
                             use24Hour = use24Hour,
                             waitMinutes = waitMinutes,
                             onDone = { viewModel.completeTask(task.id) },
@@ -231,6 +265,7 @@ fun MainScreen(
                                 task = task,
                                 scheduled = true,
                                 nowMillis = nowMillis,
+                                pauseUntilMillis = pauseUntilMillis,
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
                                 onDone = { viewModel.completeTask(task.id) },
@@ -266,6 +301,17 @@ fun MainScreen(
         )
     }
 
+    if (pausePickerOpen) {
+        DateTimePickerFlow(
+            initialMillis = null,
+            onDismiss = { pausePickerOpen = false },
+            onPicked = { atMillis ->
+                pausePickerOpen = false
+                viewModel.pauseNotificationsUntil(atMillis)
+            },
+        )
+    }
+
     viewModel.exactWaitTask?.let { task ->
         DateTimePickerFlow(
             initialMillis = null,
@@ -286,6 +332,69 @@ fun MainScreen(
                 viewModel.saveSchedule(task.id, firstWarningAtMillis, repeatIntervalMinutes, recurrence)
             },
         )
+    }
+}
+
+/**
+ * Silences every reminder for a while. Nothing is lost: whatever would have
+ * nagged during the pause is held and arrives once it ends. [pauseUntilMillis]
+ * is null when notifications are live.
+ */
+@Composable
+private fun PauseMenuButton(
+    pauseUntilMillis: Long?,
+    use24Hour: Boolean,
+    onPause: (Int) -> Unit,
+    onPickDateTime: () -> Unit,
+    onResume: () -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { menuExpanded = true }) {
+            Icon(
+                if (pauseUntilMillis != null) Icons.Filled.NotificationsOff else Icons.Filled.Notifications,
+                contentDescription = if (pauseUntilMillis != null) "Reminders paused" else "Pause reminders",
+            )
+        }
+        // Anchored to the button, like the row's snooze menu.
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            if (pauseUntilMillis != null) {
+                Text(
+                    "Paused until ${formatDateTime(pauseUntilMillis, use24Hour)}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                DropdownMenuItem(
+                    text = { Text("Resume now") },
+                    leadingIcon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
+                    onClick = {
+                        menuExpanded = false
+                        onResume()
+                    },
+                )
+                HorizontalDivider()
+            }
+            PAUSE_OPTIONS_MINUTES.forEach { minutes ->
+                DropdownMenuItem(
+                    text = { Text("Pause for ${formatDuration(minutes)}") },
+                    leadingIcon = { Icon(Icons.Filled.NotificationsOff, contentDescription = null) },
+                    onClick = {
+                        menuExpanded = false
+                        onPause(minutes)
+                    },
+                )
+            }
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text("Pause until a date & time…") },
+                leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+                onClick = {
+                    menuExpanded = false
+                    onPickDateTime()
+                },
+            )
+        }
     }
 }
 
@@ -572,6 +681,7 @@ private fun TaskRow(
     task: OpenTaskEntity,
     scheduled: Boolean,
     nowMillis: Long,
+    pauseUntilMillis: Long?,
     use24Hour: Boolean,
     onDone: () -> Unit,
     onCancel: () -> Unit,
@@ -597,7 +707,11 @@ private fun TaskRow(
             val schedule = if (scheduled) {
                 "starts ${formatDateTime(task.firstWarningAtMillis ?: task.nextFireAtMillis, use24Hour)}"
             } else {
-                "next nag ${relativeFuture(task.nextFireAtMillis, nowMillis)} · every ${task.repeatIntervalMinutes} min"
+                // The effective time, not the intended one: while paused the
+                // task still holds the fire time it wants, but promising a nag
+                // that the pause will swallow would be a lie.
+                val nextNag = deferPastPause(task.nextFireAtMillis, pauseUntilMillis)
+                "next nag ${relativeFuture(nextNag, nowMillis)} · every ${task.repeatIntervalMinutes} min"
             }
             Text(
                 schedule,

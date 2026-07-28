@@ -219,8 +219,8 @@ class RecordingReminderScheduler : ReminderScheduler {
 
     override fun canScheduleExact(): Boolean = true
 
-    override fun schedule(task: OpenTaskEntity) {
-        scheduled[task.id] = task.nextFireAtMillis
+    override fun schedule(taskId: String, atMillis: Long) {
+        scheduled[taskId] = atMillis
     }
 
     override fun cancel(taskId: String) {
@@ -248,6 +248,7 @@ class RecordingSyncScheduler : SyncScheduler {
 
 class FakeSettingsStore : SettingsStore {
     var settings = SettingsDto(60, 15, listOf(60, 240), 0)
+    var pauseUntilMillis: Long? = null
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -259,6 +260,7 @@ class FakeSettingsStore : SettingsStore {
         repeatIntervalMinutes = settings.repeatIntervalMinutes,
         waitMinutes = settings.waitMinutes,
         defaultWaitIndex = settings.defaultWaitIndex,
+        pauseUntilMillis = pauseUntilMillis,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {
@@ -267,6 +269,10 @@ class FakeSettingsStore : SettingsStore {
 
     override suspend fun saveSettings(settings: SettingsDto) {
         this.settings = settings
+    }
+
+    override suspend fun savePauseUntil(atMillis: Long?) {
+        pauseUntilMillis = atMillis
     }
 
     override suspend fun markSettingsDirty() {

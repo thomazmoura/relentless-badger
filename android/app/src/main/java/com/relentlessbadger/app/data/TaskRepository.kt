@@ -30,6 +30,18 @@ class TaskRepository(
     private val timeSource: TimeSource = TimeSource.SYSTEM,
 ) {
 
+    /**
+     * Arms the task's alarm. The single place a fire time reaches the platform,
+     * so a pause is honoured no matter which mutation computed the time — and
+     * the row keeps the time the task actually wants, so resuming restores it.
+     */
+    private suspend fun arm(task: OpenTaskEntity) {
+        scheduler.schedule(
+            task.id,
+            deferPastPause(task.nextFireAtMillis, settings.current().pauseUntilMillis),
+        )
+    }
+
     fun openTasks(): Flow<List<OpenTaskEntity>> = dao.observeActive()
 
     suspend fun openTask(id: String): OpenTaskEntity? = dao.getById(id)?.takeIf { !it.pendingDone }
@@ -73,7 +85,7 @@ class TaskRepository(
             pendingCreate = true,
         )
         dao.upsert(entity)
-        scheduler.schedule(entity)
+        arm(entity)
         titleDao.recordUse(title, now)
         syncScheduler.requestSync()
         return entity
@@ -130,7 +142,7 @@ class TaskRepository(
             pendingUpdate = false,
         )
         dao.upsert(next)
-        scheduler.schedule(next)
+        arm(next)
         // No titleDao.recordUse: spawns shouldn't inflate suggestion ranks.
     }
 
@@ -168,7 +180,7 @@ class TaskRepository(
             pendingUpdate = true,
         )
         dao.upsert(updated)
-        scheduler.schedule(updated)
+        arm(updated)
         scheduler.dismissNotification(id)
         syncScheduler.requestSync()
     }
@@ -193,7 +205,7 @@ class TaskRepository(
         val task = dao.getById(id) ?: return
         val next = task.copy(nextFireAtMillis = atMillis)
         dao.upsert(next)
-        scheduler.schedule(next)
+        arm(next)
         scheduler.dismissNotification(id)
     }
 
@@ -205,17 +217,26 @@ class TaskRepository(
         val task = dao.getById(id) ?: return
         if (task.pendingDone) return
         val session = settings.current()
+        // The alarm can still land inside a pause: inexact alarms drift, a
+        // sleeping device wakes late, and the pause may have started after the
+        // alarm was armed. Re-arm instead of nagging through the silence.
+        if (session.isPaused(timeSource.now())) {
+            arm(task)
+            return
+        }
         scheduler.showReminder(task, session.defaultWaitMinutes)
         val next = task.copy(
             nextFireAtMillis = timeSource.now() + task.repeatIntervalMinutes * 60_000L,
         )
         dao.upsert(next)
-        scheduler.schedule(next)
+        arm(next)
     }
 
     /**
-     * Re-arms every open task's alarm after a reboot or app update. Fire times
-     * that passed while the device was off are nudged one minute out.
+     * Re-arms every open task's alarm after a reboot, an app update, or a change
+     * to the notification pause. Fire times that passed meanwhile — while the
+     * device was off, or while the app was silenced — are nudged one minute out,
+     * so resuming lands as a reminder rather than an instant burst.
      */
     suspend fun reArmAlarms() {
         val now = timeSource.now()
@@ -226,8 +247,31 @@ class TaskRepository(
                 task
             }
             dao.upsert(next)
-            scheduler.schedule(next)
+            arm(next)
         }
+    }
+
+    /**
+     * Silences every reminder until [atMillis]. Tasks keep the fire times they
+     * were given — only the armed alarms move — so [resumeNotifications] puts
+     * everything back where it was. A time in the past would be a no-op pause.
+     */
+    suspend fun pauseNotificationsUntil(atMillis: Long) {
+        if (atMillis <= timeSource.now()) return
+        settings.savePauseUntil(atMillis)
+        // Nags already in the drawer would otherwise sit there through the
+        // whole pause; they come back when their re-armed alarm fires.
+        dao.getActive().forEach { scheduler.dismissNotification(it.id) }
+        reArmAlarms()
+    }
+
+    suspend fun pauseNotifications(minutes: Int) =
+        pauseNotificationsUntil(timeSource.now() + minutes * 60_000L)
+
+    /** Ends the pause early; alarms go straight back to their intended times. */
+    suspend fun resumeNotifications() {
+        settings.savePauseUntil(null)
+        reArmAlarms()
     }
 
     /**
@@ -310,7 +354,7 @@ class TaskRepository(
         titleDao.upsertFromServer(apiClient.api().getTitles(), timeSource.now())
         pullSettingsIfClean()
 
-        dao.getActive().forEach(scheduler::schedule)
+        dao.getActive().forEach { arm(it) }
     }
 
     suspend fun signOut() {
@@ -354,7 +398,7 @@ class TaskRepository(
                         dao.delete(task.id)
                         scheduler.cancel(task.id)
                         dao.upsert(reborn)
-                        scheduler.schedule(reborn)
+                        arm(reborn)
                     }
                     // Other 4xx would repeat forever; drop the flag instead of
                     // wedging sync. 5xx: keep the flag and retry next sync.

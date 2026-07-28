@@ -232,6 +232,24 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun pauseNotifications(minutes: Int) {
+        viewModelScope.launch {
+            container.repository.pauseNotifications(minutes)
+        }
+    }
+
+    fun pauseNotificationsUntil(atMillis: Long) {
+        viewModelScope.launch {
+            container.repository.pauseNotificationsUntil(atMillis)
+        }
+    }
+
+    fun resumeNotifications() {
+        viewModelScope.launch {
+            container.repository.resumeNotifications()
+        }
+    }
+
     fun saveSettings(
         initialDelayMinutes: Int,
         repeatIntervalMinutes: Int,
