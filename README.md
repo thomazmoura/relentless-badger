@@ -4,6 +4,7 @@ A persistent-reminder to-do app: tasks are extremely fast to add, and the app **
 
 - **Backend** — .NET 10 Web API + PostgreSQL (`backend/`)
 - **App** — native Android, Kotlin, Jetpack Compose + Material 3 (`android/`)
+- **Web app** — Angular + Angular Material PWA, installable from the browser (`web/`)
 - **Auth** — Google Sign-In only (OAuth2); you log in once per device
 - **Reminders** — scheduled locally on the device (AlarmManager), no Firebase needed; they work offline and survive reboots
 - **Quick-add** — fzf-style fuzzy autocomplete over your task history: type `totr` and *take out trash* is suggested
@@ -109,6 +110,48 @@ On first launch: sign in with Google (once — the session token lasts ~180 days
 
 > Debug builds are the intended path for this PoC — `assembleRelease` produces an unsigned APK phones refuse to install, and no release signing config exists yet.
 
+## 4. Run the web app
+
+The same app in a browser: Angular + Angular Material, installable as a PWA, with **localStorage** in the role Room plays on Android. It shares the backend, so a task added on the phone shows up on the desktop and back.
+
+```bash
+cd web
+npm install
+npm start                      # http://localhost:4200, API at http://localhost:5000
+```
+
+`src/environments/environment.development.ts` holds the dev API URL and the Google client ID; `environment.ts` is the production pair (both empty by default, which shows the server-URL field and the dev sign-in button — the same rules the Android sign-in screen follows).
+
+Two things must be configured before the web app can talk to a server:
+
+- **CORS.** The API only answers browsers from origins listed in `Cors:AllowedOrigins` (`http://localhost:4200` and `:4300` in `appsettings.Development.json`; `WEB_ORIGIN` in `.env` for production).
+- **Google origins.** In the Cloud Console, add each origin (`http://localhost:4200`, the production URL) to the **Web** OAuth client's *Authorized JavaScript origins*. No redirect URI is needed — the app uses Google Identity Services, which returns the ID token in the page.
+
+### Installing it
+
+The service worker (and therefore installability and notifications) only runs in a production build:
+
+```bash
+npm run build
+npx http-server dist/web/browser -p 4300 -c-1     # http://localhost:4300 is a secure context
+```
+
+Open it, sign in, allow notifications, then install from the browser's address bar (or *Add to Home Screen* on mobile). Reminders then fire like the Android app's — with one honest limitation.
+
+### How reminders differ from Android
+
+Android schedules exact alarms that survive reboots and fire with the app closed. A browser has no equivalent, so:
+
+| | Android | Web |
+|---|---|---|
+| App open / tab in background | exact alarms | timers in the page, swept every few seconds |
+| App closed, browser running | exact alarms | best effort |
+| Browser closed | exact alarms | **nothing fires**; everything missed is nagged on the next visit |
+| Notification actions | Wait / Other… / Done | Wait / Done (the web caps actions at 2); tapping the body opens the wait picker |
+| Acting on a notification | applied silently | focuses the app, which applies it |
+
+Multiple open tabs elect a single leader, so a reminder is never shown twice.
+
 ## Deploy the API with Docker (e.g. Raspberry Pi)
 
 `backend/Dockerfile` builds a container image of the API for both `amd64` and `arm64`, and `docker-compose.prod.yml` runs it together with PostgreSQL. On the Pi (or any Docker host):
@@ -137,6 +180,8 @@ Then on the Pi set `API_IMAGE=ghcr.io/<you>/relentlessbadger-api` in `.env` and 
 |---|---|---|
 | App: API base URL | `BADGER_API_BASE_URL` in `android/gradle.properties` (dev.sh bakes `http://localhost:5000` for the emulator) | `-PBADGER_API_BASE_URL=...` or env `ORG_GRADLE_PROJECT_BADGER_API_BASE_URL` |
 | App: Google client ID | `BADGER_GOOGLE_WEB_CLIENT_ID` in `android/gradle.properties` | `-P` flag or env `ORG_GRADLE_PROJECT_BADGER_GOOGLE_WEB_CLIENT_ID` |
+| Web: API base URL + Google client ID | `web/src/environments/environment.development.ts` | `web/src/environments/environment.ts` (build-time) |
+| API: allowed browser origins | `Cors:AllowedOrigins` in `appsettings.Development.json` | `Cors__AllowedOrigins__0` / `WEB_ORIGIN` in `.env` |
 | API: any appsettings key | `appsettings.Development.json` | env vars with `__` as the separator (e.g. `Jwt__Key`, `ConnectionStrings__Default`) — see `docker-compose.prod.yml` / `.env.example` |
 
 ## API
@@ -156,9 +201,12 @@ Then on the Pi set `API_IMAGE=ghcr.io/<you>/relentlessbadger-api` in `.env` and 
 ```bash
 cd backend && dotnet test        # API integration tests (in-memory SQLite, fake Google validator)
 cd android && ./gradlew test     # BDD scenario suite + unit tests (JVM/Robolectric, no emulator)
+cd web && npm test               # the same scenario suite, ported (Vitest)
 ```
 
 The Android suite is scenario-driven (`app/src/test/.../scenario/`): Given/When/Then tests run the real repository on an in-memory Room database with the network, clock and alarms faked, covering every feature online and offline — create/disable while offline, queue flush on reconnect, sync merge and prune safety, settings last-write-wins, boot re-arm, 401 recovery, and the Room migration.
+
+The web suite is that same suite, ported scenario for scenario (`web/src/app/core/**/*.scenario.spec.ts`) onto the same seams — a real repository over a real store, with a Map standing in for localStorage. Behaviour parity between the two clients is therefore checked by the tests, not by inspection.
 
 ## Repo layout
 
@@ -177,4 +225,12 @@ The Android suite is scenario-driven (`app/src/test/.../scenario/`): Given/When/
         ├── notify/               # AlarmManager scheduling, receivers, notifications
         ├── sync/                 # WorkManager background sync (pushes queued changes on reconnect)
         └── ui/                   # Compose Material 3 screens
+└── web/
+    └── src/app/
+        ├── core/domain/          # framework-free rules: scheduling, recurrence, calendar, fuzzy match
+        ├── core/data/            # localStorage database, DAOs, API client, the ported repository
+        ├── core/notify/          # timers + service-worker notifications (the alarm layer's stand-in)
+        ├── core/sync/            # connectivity-aware sync scheduler (WorkManager's stand-in)
+        ├── core/testing/         # fakes + Given/When/Then harness, ported from the Android tests
+        └── ui/                   # Angular Material screens
 ```

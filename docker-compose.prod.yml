@@ -29,6 +29,7 @@ services:
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=relentlessbadger;Username=badger;Password=${POSTGRES_PASSWORD}
       Jwt__Key: ${JWT_KEY:?set it in .env}
       Auth__GoogleClientId: ${GOOGLE_CLIENT_ID:-}
+      Cors__AllowedOrigins__0: ${WEB_ORIGIN:-}
     ports:
       - "5000:5000"
     depends_on:

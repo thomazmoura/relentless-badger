@@ -1,0 +1,42 @@
+// Material 3 baseline theme. The Android app uses dynamic color on Android 12+ and the
+// stock M3 baseline otherwise; the web has no wallpaper to derive from, so we always use
+// the baseline scheme and follow the system light/dark preference like isSystemInDarkTheme().
+@use '@angular/material' as mat;
+
+html {
+  height: 100%;
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$violet-palette,
+        tertiary: mat.$rose-palette,
+      ),
+      typography: Roboto,
+      density: 0,
+    )
+  );
+}
+
+body {
+  color-scheme: light dark;
+  background-color: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  margin: 0;
+  height: 100%;
+  overscroll-behavior-y: none;
+}
+
+// The app owns the full viewport; only lists scroll.
+app-root {
+  display: block;
+  height: 100%;
+}
+
+// The layout is phone-shaped by design; on a wide screen it stays a column in
+// the middle rather than stretching calendar cells into acres of empty space.
+.page-body {
+  width: 100%;
+  max-width: 34rem;
+  margin: 0 auto;
+}

@@ -431,4 +431,41 @@ public class ApiTests : IClassFixture<TestAppFactory>
         var all = await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=all");
         Assert.DoesNotContain(all!, t => t.Id == task.Id);
     }
+
+    // The web client lives on another origin, so its preflight has to pass
+    // without an Authorization header — and only from a configured origin.
+    [Fact]
+    public async Task Preflight_from_a_configured_origin_is_allowed()
+    {
+        var client = _factory
+            .WithWebHostBuilder(builder => builder.UseSetting("Cors:AllowedOrigins:0", "http://localhost:4200"))
+            .CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Options, "/tasks");
+        request.Headers.Add("Origin", "http://localhost:4200");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+        request.Headers.Add("Access-Control-Request-Headers", "authorization");
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+        Assert.Equal("http://localhost:4200",
+            Assert.Single(response.Headers.GetValues("Access-Control-Allow-Origin")));
+    }
+
+    [Fact]
+    public async Task Preflight_from_an_unknown_origin_gets_no_cors_headers()
+    {
+        var client = _factory
+            .WithWebHostBuilder(builder => builder.UseSetting("Cors:AllowedOrigins:0", "http://localhost:4200"))
+            .CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Options, "/tasks");
+        request.Headers.Add("Origin", "http://evil.example");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        var response = await client.SendAsync(request);
+
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
+    }
 }

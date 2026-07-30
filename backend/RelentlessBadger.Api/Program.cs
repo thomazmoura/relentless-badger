@@ -30,6 +30,13 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 builder.Services.AddAuthorization();
 
+// The web app is a separate origin, so the browser preflights every call. Only
+// the origins listed in configuration are allowed; credentials are never used
+// (the token travels in the Authorization header), so no cookie exposure.
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
+builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
+    policy.WithOrigins(corsOrigins).AllowAnyHeader().AllowAnyMethod()));
+
 var app = builder.Build();
 
 if (app.Configuration.GetValue("Database:AutoMigrate", true))
@@ -38,6 +45,9 @@ if (app.Configuration.GetValue("Database:AutoMigrate", true))
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
 
+// Before authentication: a preflight carries no Authorization header and must
+// not be challenged.
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
