@@ -24,6 +24,7 @@ describe('mutations request a sync', () => {
       repeatIntervalMinutes: 5,
       waitMinutes: [90, 300],
       defaultWaitIndex: 0,
+      quietHours: [],
     });
     expect(badger.syncRequests.requests).toBe(3);
   });

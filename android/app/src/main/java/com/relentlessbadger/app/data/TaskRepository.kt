@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import retrofit2.HttpException
 import java.time.Instant
+import java.time.ZoneId
 import java.util.UUID
 
 /**
@@ -30,6 +31,9 @@ class TaskRepository(
     private val settings: SettingsStore,
     private val syncScheduler: SyncScheduler,
     private val timeSource: TimeSource = TimeSource.SYSTEM,
+    // Read per call, not captured: the quiet hours are wall-clock, so a device
+    // that changes zone should honour them in the zone it is in now.
+    private val zoneSource: () -> ZoneId = ZoneId::systemDefault,
 ) {
 
     /**
@@ -42,13 +46,22 @@ class TaskRepository(
 
     /**
      * Arms the task's alarm. The single place a fire time reaches the platform,
-     * so a pause is honoured no matter which mutation computed the time — and
-     * the row keeps the time the task actually wants, so resuming restores it.
+     * so a pause and the quiet hours are honoured no matter which mutation
+     * computed the time — and the row keeps the time the task actually wants,
+     * so resuming restores it.
+     *
+     * The pause is applied first: its end can itself land inside a quiet window,
+     * and the reminder has to clear both.
      */
     private suspend fun arm(task: OpenTaskEntity) {
+        val session = settings.current()
         scheduler.schedule(
             task.id,
-            deferPastPause(task.nextFireAtMillis, settings.current().pauseUntilMillis),
+            deferPastQuietHours(
+                deferPastPause(task.nextFireAtMillis, session.pauseUntilMillis),
+                session.quietHours,
+                zoneSource(),
+            ),
         )
     }
 
@@ -235,6 +248,15 @@ class TaskRepository(
             arm(task)
             return
         }
+        // Inside a quiet window, for the same reasons a pause can be live by now.
+        // Armed for the end of the window rather than re-armed from the row: the
+        // fire time the row wants may predate the window, and arming that again
+        // would land in the past and fire straight back.
+        val quietEnd = deferPastQuietHours(now, session.quietHours, zoneSource())
+        if (quietEnd > now) {
+            scheduler.schedule(task.id, quietEnd)
+            return
+        }
         // Too soon after the last nag: it would stack on top of it in the drawer
         // and hide it. Move only the alarm — the row keeps the time it wants, so
         // the delay is a one-off and never drifts the task's own cadence.
@@ -303,8 +325,14 @@ class TaskRepository(
      * dirty until a sync pushes them (last write wins).
      */
     suspend fun updateSettings(newSettings: SettingsDto) {
+        // Every other setting only shapes tasks created from here on, but quiet
+        // hours change where alarms already armed should land, so those have to
+        // be put back in their new places.
+        val quietHoursChanged =
+            settings.current().quietHours != newSettings.quietHours.mapNotNull(::parseQuietRange)
         settings.saveSettings(newSettings)
         settings.markSettingsDirty()
+        if (quietHoursChanged) reArmAlarms()
         syncScheduler.requestSync()
     }
 
@@ -503,6 +531,7 @@ class TaskRepository(
             SettingsDto(
                 session.initialDelayMinutes, session.repeatIntervalMinutes,
                 session.waitMinutes, session.defaultWaitIndex,
+                session.quietHours.map { it.toString() },
             ),
         )
         settings.clearSettingsDirty()

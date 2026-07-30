@@ -7,26 +7,45 @@ public record GoogleLoginRequest(string IdToken);
 public record LoginResponse(string Token, string Email, string? Name, SettingsDto Settings);
 
 // WaitMinutes is the ordered list of snooze options; DefaultWaitIndex picks the
-// one the reminder notification offers as its one-tap Wait button. Stored on the
-// user as CSV, exposed here as an array.
+// one the reminder notification offers as its one-tap Wait button. QuietHours
+// holds "HH:mm-HH:mm" windows in which the client holds reminders back; an empty
+// array means quiet hours are off. Both are stored on the user as CSV and
+// exposed here as arrays. QuietHours is defaulted so a client that predates the
+// field can still PUT settings.
 public record SettingsDto(
     int InitialDelayMinutes,
     int RepeatIntervalMinutes,
     int[] WaitMinutes,
-    int DefaultWaitIndex)
+    int DefaultWaitIndex,
+    string[]? QuietHours = null)
 {
     public const int MaxWaits = 6;
+    public const int MaxQuietRanges = 6;
 
     public static SettingsDto From(User user) =>
         new(user.InitialDelayMinutes, user.RepeatIntervalMinutes,
-            ParseWaits(user.WaitMinutesCsv), user.DefaultWaitIndex);
+            ParseWaits(user.WaitMinutesCsv), user.DefaultWaitIndex,
+            SplitCsv(user.QuietHoursCsv));
 
     public static int[] ParseWaits(string csv) =>
-        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(int.Parse)
-            .ToArray();
+        SplitCsv(csv).Select(int.Parse).ToArray();
 
     public static string ToCsv(int[] waits) => string.Join(',', waits);
+
+    public static string ToCsv(string[] quietHours) => string.Join(',', quietHours);
+
+    private static string[] SplitCsv(string csv) =>
+        csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>An "HH:mm-HH:mm" window whose two ends are valid and differ.</summary>
+    public static bool IsValidQuietRange(string range)
+    {
+        var ends = range.Split('-');
+        return ends.Length == 2 &&
+            TimeOnly.TryParseExact(ends[0].Trim(), "HH:mm", out var start) &&
+            TimeOnly.TryParseExact(ends[1].Trim(), "HH:mm", out var end) &&
+            start != end;
+    }
 }
 
 // Id/CreatedAt/delay overrides let an offline-first client push a task it

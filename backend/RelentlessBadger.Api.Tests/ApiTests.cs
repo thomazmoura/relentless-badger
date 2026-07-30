@@ -384,6 +384,52 @@ public class ApiTests : IClassFixture<TestAppFactory>
     }
 
     [Fact]
+    public async Task Quiet_hours_round_trip_and_start_out_empty()
+    {
+        var client = await LoginAsync(sub: "quiet-sub");
+
+        var defaults = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
+        Assert.Empty(defaults!.QuietHours!);
+
+        var putResponse = await client.PutAsJsonAsync(
+            "/me/settings", new SettingsDto(30, 5, [90, 300], 0, ["22:00-07:00", "12:30-14:00"]));
+        putResponse.EnsureSuccessStatusCode();
+
+        var updated = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
+        Assert.Equal(["22:00-07:00", "12:30-14:00"], updated!.QuietHours!);
+
+        // A client that predates the field must not wipe what another one set.
+        var withoutField = await client.PutAsJsonAsync(
+            "/me/settings", new { initialDelayMinutes = 30, repeatIntervalMinutes = 5, waitMinutes = new[] { 90, 300 }, defaultWaitIndex = 0 });
+        withoutField.EnsureSuccessStatusCode();
+        var afterOldClient = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
+        Assert.Empty(afterOldClient!.QuietHours!);
+    }
+
+    [Fact]
+    public async Task Settings_rejects_quiet_hours_it_cannot_honour()
+    {
+        var client = await LoginAsync(sub: "quiet-invalid-sub");
+
+        foreach (var range in new[] { "22:00", "22:00-25:00", "10:00-10:00", "10-11", "22:00-07:60" })
+        {
+            var response = await client.PutAsJsonAsync(
+                "/me/settings", new SettingsDto(30, 5, [90, 300], 0, [range]));
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+
+        var tooMany = await client.PutAsJsonAsync(
+            "/me/settings",
+            new SettingsDto(30, 5, [90, 300], 0,
+                ["00:00-00:30", "01:00-01:30", "02:00-02:30", "03:00-03:30", "04:00-04:30", "05:00-05:30", "06:00-06:30"]));
+        Assert.Equal(HttpStatusCode.BadRequest, tooMany.StatusCode);
+
+        // Nothing above stuck.
+        var settings = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
+        Assert.Empty(settings!.QuietHours!);
+    }
+
+    [Fact]
     public async Task Titles_are_distinct_and_ordered_by_frequency()
     {
         var client = await LoginAsync(sub: "titles-sub");

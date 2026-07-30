@@ -14,6 +14,7 @@ import com.relentlessbadger.app.AppContainer
 import com.relentlessbadger.app.BuildConfig
 import com.relentlessbadger.app.auth.GoogleSignIn
 import com.relentlessbadger.app.data.LoginRequest
+import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.db.CompletedTaskEntity
@@ -255,12 +256,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         repeatIntervalMinutes: Int,
         waitMinutes: List<Int>,
         defaultWaitIndex: Int,
+        quietHours: List<QuietRange>,
         minNotificationGapSeconds: Int,
         onDone: () -> Unit,
     ) {
         launchBusy {
             container.repository.updateSettings(
-                SettingsDto(initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex),
+                SettingsDto(
+                    initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex,
+                    quietHours.map { it.toString() },
+                ),
             )
             // Saved separately: this one stays on the device instead of syncing.
             container.repository.updateNotificationGapSeconds(minNotificationGapSeconds)

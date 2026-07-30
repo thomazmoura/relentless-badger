@@ -485,6 +485,7 @@ export class TaskRepository {
       repeatIntervalMinutes: session.repeatIntervalMinutes,
       waitMinutes: session.waitMinutes,
       defaultWaitIndex: session.defaultWaitIndex,
+      quietHours: session.quietHours,
     });
     await this.settings.clearSettingsDirty();
   }

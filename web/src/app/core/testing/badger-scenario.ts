@@ -74,12 +74,14 @@ export class BadgerScenario {
     repeatIntervalMinutes: number,
     waitMinutes: number[] = [60, 240],
     defaultWaitIndex = 0,
+    quietHours: string[] = [],
   ): Promise<void> {
     await this.settingsStore.saveSettings({
       initialDelayMinutes,
       repeatIntervalMinutes,
       waitMinutes,
       defaultWaitIndex,
+      quietHours,
     });
   }
 

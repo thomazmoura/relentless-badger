@@ -13,6 +13,9 @@ public class User
     // notification's one-tap Wait button uses.
     public string WaitMinutesCsv { get; set; } = "60,240";
     public int DefaultWaitIndex { get; set; }
+    // Wall-clock windows where the client holds reminders back until they end,
+    // as a comma-separated list of "HH:mm-HH:mm". Empty means no quiet hours.
+    public string QuietHoursCsv { get; set; } = "";
 
     public List<TaskItem> Tasks { get; set; } = [];
 }

@@ -53,9 +53,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -79,7 +77,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_WAIT_MINUTES
 import com.relentlessbadger.app.data.PAUSE_OPTIONS_MINUTES
+import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.deferPastPause
+import com.relentlessbadger.app.data.deferPastQuietHours
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.recurrence
@@ -117,6 +117,7 @@ fun MainScreen(
         }
     }
     val pauseUntilMillis = session?.pauseUntilMillis?.takeIf { it > nowMillis }
+    val quietHours = session?.quietHours.orEmpty()
     var pausePickerOpen by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -241,6 +242,7 @@ fun MainScreen(
                             scheduled = false,
                             nowMillis = nowMillis,
                             pauseUntilMillis = pauseUntilMillis,
+                            quietHours = quietHours,
                             use24Hour = use24Hour,
                             waitMinutes = waitMinutes,
                             onDone = { viewModel.completeTask(task.id) },
@@ -266,6 +268,7 @@ fun MainScreen(
                                 scheduled = true,
                                 nowMillis = nowMillis,
                                 pauseUntilMillis = pauseUntilMillis,
+                                quietHours = quietHours,
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
                                 onDone = { viewModel.completeTask(task.id) },
@@ -642,29 +645,21 @@ private fun DateTimePickerFlow(
         }
     } else {
         val initial = initialMillis?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
-        val timeState = rememberTimePickerState(
+        TimePickerDialog(
             initialHour = initial?.hour ?: 9,
             initialMinute = initial?.minute ?: 0,
-        )
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            confirmButton = {
-                TextButton(onClick = {
-                    val date = Instant.ofEpochMilli(pickedDateMillis!!)
-                        .atZone(ZoneOffset.UTC)
-                        .toLocalDate()
-                    onPicked(
-                        date.atTime(timeState.hour, timeState.minute)
-                            .atZone(ZoneId.systemDefault())
-                            .toInstant()
-                            .toEpochMilli(),
-                    )
-                }) { Text("Set") }
+            onDismiss = onDismiss,
+            onPicked = { hour, minute ->
+                val date = Instant.ofEpochMilli(pickedDateMillis!!)
+                    .atZone(ZoneOffset.UTC)
+                    .toLocalDate()
+                onPicked(
+                    date.atTime(hour, minute)
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .toEpochMilli(),
+                )
             },
-            dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
-            },
-            text = { TimePicker(state = timeState) },
         )
     }
 }
@@ -682,6 +677,7 @@ private fun TaskRow(
     scheduled: Boolean,
     nowMillis: Long,
     pauseUntilMillis: Long?,
+    quietHours: List<QuietRange>,
     use24Hour: Boolean,
     onDone: () -> Unit,
     onCancel: () -> Unit,
@@ -707,10 +703,13 @@ private fun TaskRow(
             val schedule = if (scheduled) {
                 "starts ${formatDateTime(task.firstWarningAtMillis ?: task.nextFireAtMillis, use24Hour)}"
             } else {
-                // The effective time, not the intended one: while paused the
-                // task still holds the fire time it wants, but promising a nag
-                // that the pause will swallow would be a lie.
-                val nextNag = deferPastPause(task.nextFireAtMillis, pauseUntilMillis)
+                // The effective time, not the intended one: while paused or
+                // inside the quiet hours the task still holds the fire time it
+                // wants, but promising a nag that will be held back is a lie.
+                val nextNag = deferPastQuietHours(
+                    deferPastPause(task.nextFireAtMillis, pauseUntilMillis),
+                    quietHours,
+                )
                 "next nag ${relativeFuture(nextNag, nowMillis)} · every ${task.repeatIntervalMinutes} min"
             }
             Text(

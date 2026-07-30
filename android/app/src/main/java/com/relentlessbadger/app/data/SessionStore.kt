@@ -23,6 +23,9 @@ data class Session(
     val waitMinutes: List<Int>,
     // Index into [waitMinutes]: the wait the notification's one-tap button uses.
     val defaultWaitIndex: Int,
+    // Wall-clock windows where reminders are held back until the window ends.
+    // Empty means quiet hours are switched off.
+    val quietHours: List<QuietRange>,
     // While set and still in the future, every reminder is held back until then.
     val pauseUntilMillis: Long?,
     // Minimum spacing between two notifications; 0 lets them fire together.
@@ -80,6 +83,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val REPEAT_INTERVAL = intPreferencesKey("repeat_interval_minutes")
         val WAIT_MINUTES = stringPreferencesKey("wait_minutes")
         val DEFAULT_WAIT_INDEX = intPreferencesKey("default_wait_index")
+        val QUIET_HOURS = stringPreferencesKey("quiet_hours")
         val PAUSE_UNTIL = longPreferencesKey("pause_until_millis")
         val MIN_NOTIFICATION_GAP = intPreferencesKey("min_notification_gap_seconds")
         val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
@@ -109,6 +113,7 @@ class SessionStore(private val context: Context) : SettingsStore {
                 prefs[Keys.WAIT_MINUTES], prefs[Keys.MEDIUM_WAIT], prefs[Keys.LONG_WAIT],
             ),
             defaultWaitIndex = prefs[Keys.DEFAULT_WAIT_INDEX] ?: 0,
+            quietHours = parseQuietHours(prefs[Keys.QUIET_HOURS]),
             pauseUntilMillis = prefs[Keys.PAUSE_UNTIL],
             minNotificationGapSeconds =
                 prefs[Keys.MIN_NOTIFICATION_GAP] ?: DEFAULT_NOTIFICATION_GAP_SECONDS,
@@ -135,6 +140,7 @@ class SessionStore(private val context: Context) : SettingsStore {
             it[Keys.REPEAT_INTERVAL] = settings.repeatIntervalMinutes
             it[Keys.WAIT_MINUTES] = settings.waitMinutes.joinToString(",")
             it[Keys.DEFAULT_WAIT_INDEX] = settings.defaultWaitIndex
+            it[Keys.QUIET_HOURS] = settings.quietHours.joinToString(",")
         }
         cachedToken = token
     }
@@ -145,6 +151,7 @@ class SessionStore(private val context: Context) : SettingsStore {
             it[Keys.REPEAT_INTERVAL] = settings.repeatIntervalMinutes
             it[Keys.WAIT_MINUTES] = settings.waitMinutes.joinToString(",")
             it[Keys.DEFAULT_WAIT_INDEX] = settings.defaultWaitIndex
+            it[Keys.QUIET_HOURS] = settings.quietHours.joinToString(",")
         }
     }
 

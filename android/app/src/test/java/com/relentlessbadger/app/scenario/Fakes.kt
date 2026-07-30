@@ -6,6 +6,7 @@ import com.relentlessbadger.app.data.CreateTaskRequest
 import com.relentlessbadger.app.data.DEFAULT_NOTIFICATION_GAP_SECONDS
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.LoginResponse
+import com.relentlessbadger.app.data.parseQuietRange
 import com.relentlessbadger.app.data.Session
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.data.SettingsStore
@@ -267,6 +268,7 @@ class FakeSettingsStore : SettingsStore {
         repeatIntervalMinutes = settings.repeatIntervalMinutes,
         waitMinutes = settings.waitMinutes,
         defaultWaitIndex = settings.defaultWaitIndex,
+        quietHours = settings.quietHours.mapNotNull(::parseQuietRange),
         pauseUntilMillis = pauseUntilMillis,
         minNotificationGapSeconds = minNotificationGapSeconds,
         lastNotificationAtMillis = lastNotificationAtMillis,

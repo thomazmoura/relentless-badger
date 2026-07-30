@@ -1,5 +1,6 @@
 package com.relentlessbadger.app.ui
 
+import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -36,9 +38,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.relentlessbadger.app.data.DEFAULT_QUIET_HOURS
+import com.relentlessbadger.app.data.MAX_QUIET_RANGES
 import com.relentlessbadger.app.data.MAX_WAITS
+import com.relentlessbadger.app.data.parseQuietRange
 import com.relentlessbadger.app.data.Session
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +54,7 @@ fun SettingsScreen(
     session: Session,
     onBack: () -> Unit,
 ) {
+    val use24Hour = DateFormat.is24HourFormat(LocalContext.current)
     var initialDelay by rememberSaveable { mutableStateOf(session.initialDelayMinutes.toString()) }
     var repeatInterval by rememberSaveable { mutableStateOf(session.repeatIntervalMinutes.toString()) }
     val waits = rememberSaveable(saver = listSaver({ it.toList() }, { it.toMutableStateList() })) {
@@ -57,6 +64,20 @@ fun SettingsScreen(
     var notificationGap by rememberSaveable {
         mutableStateOf(session.minNotificationGapSeconds.toString())
     }
+    // An empty stored list means switched off, but the rows survive the toggle so
+    // turning quiet hours back on doesn't mean setting the times up again.
+    var quietHoursOn by rememberSaveable { mutableStateOf(session.quietHours.isNotEmpty()) }
+    val quietHours = rememberSaveable(
+        saver = listSaver(
+            { list -> list.map { it.toString() } },
+            { saved -> saved.mapNotNull(::parseQuietRange).toMutableStateList() },
+        ),
+    ) {
+        session.quietHours.ifEmpty { DEFAULT_QUIET_HOURS }.toMutableStateList()
+    }
+    // Which end of which row the clock dialog is editing; -1 for closed.
+    var editingQuietIndex by rememberSaveable { mutableIntStateOf(-1) }
+    var editingQuietStart by rememberSaveable { mutableStateOf(true) }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var serverUrl by rememberSaveable { mutableStateOf(session.baseUrl) }
     var confirmServerChange by rememberSaveable { mutableStateOf(false) }
@@ -69,7 +90,8 @@ fun SettingsScreen(
     val valid = (initialDelayValue ?: 0) >= 1 && (repeatIntervalValue ?: 0) >= 1 &&
         waitValues.isNotEmpty() && waitValues.all { (it ?: 0) >= 1 } &&
         defaultWaitIndex in waits.indices &&
-        (notificationGapValue ?: -1) >= 0
+        (notificationGapValue ?: -1) >= 0 &&
+        (!quietHoursOn || quietHours.isNotEmpty())
 
     Scaffold(
         topBar = {
@@ -191,6 +213,69 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("Quiet hours", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Switch(checked = quietHoursOn, onCheckedChange = { quietHoursOn = it })
+            }
+
+            Text(
+                "Reminders that come due inside these hours arrive when they end. " +
+                    "Nothing is skipped, and tasks keep the times they were given.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            if (quietHoursOn) {
+                quietHours.forEachIndexed { index, range ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                    ) {
+                        TextButton(onClick = {
+                            editingQuietIndex = index
+                            editingQuietStart = true
+                        }) {
+                            Text(formatTimeOfDay(range.startMinute, use24Hour))
+                        }
+                        Text("to", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = {
+                            editingQuietIndex = index
+                            editingQuietStart = false
+                        }) {
+                            Text(formatTimeOfDay(range.endMinute, use24Hour))
+                        }
+                        Spacer(Modifier.weight(1f))
+                        IconButton(onClick = { quietHours.removeAt(index) }) {
+                            Icon(
+                                Icons.Filled.Delete,
+                                contentDescription = "Remove quiet hours ${index + 1}",
+                            )
+                        }
+                    }
+                }
+
+                TextButton(
+                    onClick = { quietHours.add(DEFAULT_QUIET_HOURS.first()) },
+                    enabled = quietHours.size < MAX_QUIET_RANGES,
+                ) {
+                    Text("Add quiet hours")
+                }
+
+                if (quietHours.isEmpty()) {
+                    Text(
+                        "Add a range, or switch quiet hours off.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp))
+
             Button(
                 onClick = {
                     viewModel.saveSettings(
@@ -198,6 +283,7 @@ fun SettingsScreen(
                         repeatIntervalValue!!,
                         waitValues.map { it!! },
                         defaultWaitIndex,
+                        if (quietHoursOn) quietHours.toList() else emptyList(),
                         notificationGapValue!!,
                         onDone = onBack,
                     )
@@ -251,6 +337,30 @@ fun SettingsScreen(
                 Text(message, color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    if (editingQuietIndex in quietHours.indices) {
+        val range = quietHours[editingQuietIndex]
+        val minute = if (editingQuietStart) range.startMinute else range.endMinute
+        TimePickerDialog(
+            initialHour = minute / 60,
+            initialMinute = minute % 60,
+            onDismiss = { editingQuietIndex = -1 },
+            onPicked = { hour, pickedMinute ->
+                val picked = hour * 60 + pickedMinute
+                // A window that starts and ends at the same minute would silence
+                // the whole day, so an edit that would do that is dropped.
+                val other = if (editingQuietStart) range.endMinute else range.startMinute
+                if (picked != other) {
+                    quietHours[editingQuietIndex] = if (editingQuietStart) {
+                        range.copy(startMinute = picked)
+                    } else {
+                        range.copy(endMinute = picked)
+                    }
+                }
+                editingQuietIndex = -1
+            },
+        )
     }
 
     if (confirmServerChange) {

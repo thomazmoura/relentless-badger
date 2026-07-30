@@ -41,11 +41,11 @@ export class LocalSessionStore implements SettingsStore {
   }
 
   async saveLogin(token: string, email: string, settings: SettingsDto): Promise<void> {
-    this.store.patchSession({ token, email, ...settings, waitMinutes: [...settings.waitMinutes] });
+    this.store.patchSession({ token, email, ...normalize(settings) });
   }
 
   async saveSettings(settings: SettingsDto): Promise<void> {
-    this.store.patchSession({ ...settings, waitMinutes: [...settings.waitMinutes] });
+    this.store.patchSession(normalize(settings));
   }
 
   async markSettingsDirty(): Promise<void> {
@@ -63,6 +63,15 @@ export class LocalSessionStore implements SettingsStore {
   async clear(): Promise<void> {
     this.store.clearAll();
   }
+}
+
+/** Copies the DTO's arrays, so a stored session never aliases the caller's. */
+function normalize(settings: SettingsDto): SettingsDto {
+  return {
+    ...settings,
+    waitMinutes: [...settings.waitMinutes],
+    quietHours: [...(settings.quietHours ?? [])],
+  };
 }
 
 export function normalizeBaseUrl(baseUrl: string): string {

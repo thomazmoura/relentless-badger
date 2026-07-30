@@ -233,6 +233,9 @@ export class SettingsPage {
         repeatIntervalMinutes: parsePositive(this.repeatInterval())!,
         waitMinutes: this.waits().map((wait) => parsePositive(wait)!),
         defaultWaitIndex: this.defaultWaitIndex(),
+        // Not editable here — carried through so saving on this client can't
+        // wipe quiet hours set on the phone.
+        quietHours: this.session.quietHours,
       },
       () => this.back(),
     );

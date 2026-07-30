@@ -15,7 +15,14 @@ describe('settings', () => {
     repeatIntervalMinutes: number,
     waitMinutes: number[],
     defaultWaitIndex: number,
-  ): SettingsDto => ({ initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex });
+    quietHours: string[] = [],
+  ): SettingsDto => ({
+    initialDelayMinutes,
+    repeatIntervalMinutes,
+    waitMinutes,
+    defaultWaitIndex,
+    quietHours,
+  });
 
   it('settings saved offline take effect immediately and are pushed when connectivity returns', async () => {
     badger.givenOffline();
@@ -91,5 +98,20 @@ describe('settings', () => {
     await badger.whenServerUrlChangeFailsWith('not a url');
 
     expect(badger.settingsStore.baseUrl).toBe('http://badger.test');
+  });
+
+  // Quiet hours are an Android feature, but they are account settings: this
+  // client has to carry them or saving here would wipe them off the phone.
+  it('quiet hours set on another client survive a save here', async () => {
+    badger.server.settings = settings(45, 20, [120, 480], 1, ['22:00-07:00']);
+    await badger.whenSyncRuns();
+
+    await badger.whenSettingsSaved({
+      ...badger.settingsStore.settings,
+      initialDelayMinutes: 30,
+    });
+    await badger.whenSyncRuns();
+
+    expect(badger.server.settings.quietHours).toEqual(['22:00-07:00']);
   });
 });

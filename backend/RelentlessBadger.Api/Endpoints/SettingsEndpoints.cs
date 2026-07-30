@@ -35,6 +35,19 @@ public static class SettingsEndpoints
                 return Results.BadRequest(new { error = "The default wait must be one of the waits." });
             }
 
+            var quietHours = settings.QuietHours ?? [];
+            if (quietHours.Length > SettingsDto.MaxQuietRanges)
+            {
+                return Results.BadRequest(
+                    new { error = $"Pick at most {SettingsDto.MaxQuietRanges} quiet hour ranges." });
+            }
+
+            if (quietHours.Any(range => !SettingsDto.IsValidQuietRange(range)))
+            {
+                return Results.BadRequest(
+                    new { error = "Quiet hours must look like \"HH:mm-HH:mm\" and not start and end at the same time." });
+            }
+
             var user = await principal.GetUserAsync(db);
             if (user is null)
             {
@@ -45,6 +58,7 @@ public static class SettingsEndpoints
             user.RepeatIntervalMinutes = settings.RepeatIntervalMinutes;
             user.WaitMinutesCsv = SettingsDto.ToCsv(settings.WaitMinutes);
             user.DefaultWaitIndex = settings.DefaultWaitIndex;
+            user.QuietHoursCsv = SettingsDto.ToCsv(quietHours);
             await db.SaveChangesAsync();
 
             return Results.Ok(SettingsDto.From(user));

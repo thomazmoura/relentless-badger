@@ -11,6 +11,8 @@ import com.relentlessbadger.app.db.BadgerDb
 import com.relentlessbadger.app.db.CompletedTaskEntity
 import com.relentlessbadger.app.db.OpenTaskEntity
 import kotlinx.coroutines.flow.first
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -54,6 +56,9 @@ class BadgerScenario {
         settings = settingsStore,
         syncScheduler = syncRequests,
         timeSource = clock,
+        // Pinned so quiet-hours expectations mean the same thing on every
+        // machine; wall-clock behavior is what these scenarios are about.
+        zoneSource = { SCENARIO_ZONE },
     )
 
     // --- Given ---
@@ -85,6 +90,16 @@ class BadgerScenario {
             SettingsDto(initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex),
         )
     }
+
+    /** Quiet windows as "HH:mm-HH:mm", in [SCENARIO_ZONE]. Empty switches them off. */
+    suspend fun givenQuietHours(vararg ranges: String) {
+        settingsStore.saveSettings(settingsStore.settings.copy(quietHours = ranges.toList()))
+    }
+
+    /** The instant of [minuteOfDay] on the scenario clock's current local day. */
+    fun todayAt(hour: Int, minute: Int = 0): Long =
+        Instant.ofEpochMilli(clock.now()).atZone(SCENARIO_ZONE).toLocalDate()
+            .atTime(hour, minute).atZone(SCENARIO_ZONE).toInstant().toEpochMilli()
 
     suspend fun givenNotificationGapSeconds(seconds: Int) =
         repository.updateNotificationGapSeconds(seconds)
@@ -241,6 +256,10 @@ class BadgerScenario {
     companion object {
         /** 2026-01-01T00:00:00Z — scenarios reason in offsets from here. */
         const val START_OF_TIME = 1_767_225_600_000L
+
+        /** UTC, so START_OF_TIME is local midnight and wall-clock times are plain. */
+        val SCENARIO_ZONE: ZoneId = ZoneId.of("UTC")
+
         const val MINUTE = 60_000L
         const val SECOND = 1_000L
     }

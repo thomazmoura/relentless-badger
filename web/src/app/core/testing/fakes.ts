@@ -38,6 +38,7 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
     repeatIntervalMinutes: 15,
     waitMinutes: [60, 240],
     defaultWaitIndex: 0,
+    quietHours: [],
   };
   readonly tasks = new Map<string, TaskDto>();
 
@@ -290,6 +291,7 @@ export class FakeSettingsStore implements SettingsStore {
     repeatIntervalMinutes: 15,
     waitMinutes: [60, 240],
     defaultWaitIndex: 0,
+    quietHours: [],
   };
   dirty = false;
   baseUrl = 'http://badger.test';
@@ -303,6 +305,7 @@ export class FakeSettingsStore implements SettingsStore {
       repeatIntervalMinutes: this.settings.repeatIntervalMinutes,
       waitMinutes: this.settings.waitMinutes,
       defaultWaitIndex: this.settings.defaultWaitIndex,
+      quietHours: this.settings.quietHours,
       settingsDirty: this.dirty,
     };
   }

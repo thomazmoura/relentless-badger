@@ -8,12 +8,16 @@ data class LoginRequest(val idToken: String)
 // waitMinutes is the ordered list of snooze options offered on a task and its
 // reminder; defaultWaitIndex picks the one the notification's one-tap Wait
 // button uses. At most MAX_WAITS entries — see Session.waitMinutes.
+// quietHours holds "HH:mm-HH:mm" windows where reminders are held back; empty
+// means switched off. Defaulted so a response from a server that predates a
+// field still deserialises.
 @Serializable
 data class SettingsDto(
     val initialDelayMinutes: Int,
     val repeatIntervalMinutes: Int,
     val waitMinutes: List<Int> = DEFAULT_WAIT_MINUTES,
     val defaultWaitIndex: Int = 0,
+    val quietHours: List<String> = emptyList(),
 )
 
 const val MAX_WAITS = 6

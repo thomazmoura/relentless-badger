@@ -69,6 +69,13 @@ export interface SettingsDto {
   readonly waitMinutes: readonly number[];
   /** Index into waitMinutes: the wait the reminder's one-tap button uses. */
   readonly defaultWaitIndex: number;
+  /**
+   * Wall-clock windows as "HH:mm-HH:mm" in which reminders are held back until
+   * the window ends; empty means off. Only the Android client acts on these,
+   * but they are account settings, so this client carries them through its
+   * push and pull instead of wiping them.
+   */
+  readonly quietHours: readonly string[];
 }
 
 export interface Session extends SettingsDto {

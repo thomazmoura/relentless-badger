@@ -48,6 +48,7 @@ export const EMPTY_SESSION: Session = {
   repeatIntervalMinutes: DEFAULT_REPEAT_INTERVAL_MINUTES,
   waitMinutes: [...DEFAULT_WAIT_MINUTES],
   defaultWaitIndex: 0,
+  quietHours: [],
   settingsDirty: false,
 };
 
