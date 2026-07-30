@@ -255,12 +255,15 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         repeatIntervalMinutes: Int,
         waitMinutes: List<Int>,
         defaultWaitIndex: Int,
+        minNotificationGapSeconds: Int,
         onDone: () -> Unit,
     ) {
         launchBusy {
             container.repository.updateSettings(
                 SettingsDto(initialDelayMinutes, repeatIntervalMinutes, waitMinutes, defaultWaitIndex),
             )
+            // Saved separately: this one stays on the device instead of syncing.
+            container.repository.updateNotificationGapSeconds(minNotificationGapSeconds)
             onDone()
         }
     }

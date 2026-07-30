@@ -8,6 +8,8 @@ import com.relentlessbadger.app.db.TitleHistoryDao
 import com.relentlessbadger.app.notify.ReminderScheduler
 import com.relentlessbadger.app.sync.SyncScheduler
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import retrofit2.HttpException
 import java.time.Instant
@@ -29,6 +31,14 @@ class TaskRepository(
     private val syncScheduler: SyncScheduler,
     private val timeSource: TimeSource = TimeSource.SYSTEM,
 ) {
+
+    /**
+     * Serialises firing reminders. Alarms armed for the same instant arrive on
+     * separate threads, and the notification spacing in [onReminderFired] is a
+     * read-then-write of the same timestamp: without this they would both see
+     * the old value and post together, which is exactly what spacing prevents.
+     */
+    private val reminderLock = Mutex()
 
     /**
      * Arms the task's alarm. The single place a fire time reaches the platform,
@@ -213,20 +223,34 @@ class TaskRepository(
      * A reminder alarm fired: show the nag and schedule the next repeat. The
      * chain stops once the task is completed (row removed or pendingDone).
      */
-    suspend fun onReminderFired(id: String) {
+    suspend fun onReminderFired(id: String): Unit = reminderLock.withLock {
         val task = dao.getById(id) ?: return
         if (task.pendingDone) return
         val session = settings.current()
+        val now = timeSource.now()
         // The alarm can still land inside a pause: inexact alarms drift, a
         // sleeping device wakes late, and the pause may have started after the
         // alarm was armed. Re-arm instead of nagging through the silence.
-        if (session.isPaused(timeSource.now())) {
+        if (session.isPaused(now)) {
             arm(task)
             return
         }
+        // Too soon after the last nag: it would stack on top of it in the drawer
+        // and hide it. Move only the alarm — the row keeps the time it wants, so
+        // the delay is a one-off and never drifts the task's own cadence.
+        val slot = nextNotificationSlot(
+            now,
+            session.lastNotificationAtMillis,
+            session.minNotificationGapSeconds,
+        )
+        if (slot > now) {
+            scheduler.schedule(task.id, slot)
+            return
+        }
         scheduler.showReminder(task, session.defaultWaitMinutes)
+        settings.saveLastNotificationAt(now)
         val next = task.copy(
-            nextFireAtMillis = timeSource.now() + task.repeatIntervalMinutes * 60_000L,
+            nextFireAtMillis = now + task.repeatIntervalMinutes * 60_000L,
         )
         dao.upsert(next)
         arm(next)
@@ -282,6 +306,15 @@ class TaskRepository(
         settings.saveSettings(newSettings)
         settings.markSettingsDirty()
         syncScheduler.requestSync()
+    }
+
+    /**
+     * Sets the minimum spacing between notifications; 0 disables it. Kept out of
+     * [updateSettings] on purpose — it never travels to the server, so it is
+     * neither flagged dirty nor pushed.
+     */
+    suspend fun updateNotificationGapSeconds(seconds: Int) {
+        settings.saveMinNotificationGapSeconds(seconds.coerceAtLeast(0))
     }
 
     /**

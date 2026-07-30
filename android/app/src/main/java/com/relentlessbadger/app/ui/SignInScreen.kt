@@ -40,7 +40,7 @@ fun SignInScreen(viewModel: AppViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("RelentlessBadger", style = MaterialTheme.typography.headlineMedium)
+        Text("Relentless Badger", style = MaterialTheme.typography.headlineMedium)
         Text(
             "The to-do list that won't shut up until you do the thing.",
             style = MaterialTheme.typography.bodyMedium,

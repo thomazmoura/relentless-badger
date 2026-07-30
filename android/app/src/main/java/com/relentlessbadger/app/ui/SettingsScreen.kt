@@ -54,6 +54,9 @@ fun SettingsScreen(
         session.waitMinutes.map { it.toString() }.toMutableStateList()
     }
     var defaultWaitIndex by rememberSaveable { mutableIntStateOf(session.defaultWaitIndex) }
+    var notificationGap by rememberSaveable {
+        mutableStateOf(session.minNotificationGapSeconds.toString())
+    }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var serverUrl by rememberSaveable { mutableStateOf(session.baseUrl) }
     var confirmServerChange by rememberSaveable { mutableStateOf(false) }
@@ -62,9 +65,11 @@ fun SettingsScreen(
     val initialDelayValue = initialDelay.toIntOrNull()
     val repeatIntervalValue = repeatInterval.toIntOrNull()
     val waitValues = waits.map { it.toIntOrNull() }
+    val notificationGapValue = notificationGap.toIntOrNull()
     val valid = (initialDelayValue ?: 0) >= 1 && (repeatIntervalValue ?: 0) >= 1 &&
         waitValues.isNotEmpty() && waitValues.all { (it ?: 0) >= 1 } &&
-        defaultWaitIndex in waits.indices
+        defaultWaitIndex in waits.indices &&
+        (notificationGapValue ?: -1) >= 0
 
     Scaffold(
         topBar = {
@@ -165,6 +170,27 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            Text(
+                "Reminders that come due together would stack up and hide each other, " +
+                    "so they are spread out instead. None are skipped — a reminder that " +
+                    "lands too soon just waits its turn. Use 0 to let them arrive together.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            Spacer(Modifier.height(12.dp))
+
+            OutlinedTextField(
+                value = notificationGap,
+                onValueChange = { notificationGap = it },
+                label = { Text("Minimum seconds between notifications") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                isError = notificationGap.isNotEmpty() && (notificationGapValue ?: -1) < 0,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(24.dp))
+
             Button(
                 onClick = {
                     viewModel.saveSettings(
@@ -172,6 +198,7 @@ fun SettingsScreen(
                         repeatIntervalValue!!,
                         waitValues.map { it!! },
                         defaultWaitIndex,
+                        notificationGapValue!!,
                         onDone = onBack,
                     )
                 },

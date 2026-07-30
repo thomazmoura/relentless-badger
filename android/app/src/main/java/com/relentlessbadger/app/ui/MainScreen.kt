@@ -147,7 +147,7 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("RelentlessBadger") },
+                title = { Text("Relentless Badger") },
                 actions = {
                     PauseMenuButton(
                         pauseUntilMillis = pauseUntilMillis,

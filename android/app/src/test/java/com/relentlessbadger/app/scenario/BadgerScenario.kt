@@ -86,6 +86,9 @@ class BadgerScenario {
         )
     }
 
+    suspend fun givenNotificationGapSeconds(seconds: Int) =
+        repository.updateNotificationGapSeconds(seconds)
+
     /** A task known to both sides with no pending local changes. */
     suspend fun givenSyncedTask(title: String): OpenTaskEntity {
         val dto = server.seedOpenTask(title)
@@ -157,6 +160,8 @@ class BadgerScenario {
     }
 
     fun whenTimeAdvancesMinutes(minutes: Int) = clock.advanceMinutes(minutes)
+
+    fun whenTimeAdvancesSeconds(seconds: Int) = clock.advanceSeconds(seconds)
 
     // --- Then ---
 
@@ -237,6 +242,7 @@ class BadgerScenario {
         /** 2026-01-01T00:00:00Z — scenarios reason in offsets from here. */
         const val START_OF_TIME = 1_767_225_600_000L
         const val MINUTE = 60_000L
+        const val SECOND = 1_000L
     }
 }
 

@@ -25,6 +25,10 @@ data class Session(
     val defaultWaitIndex: Int,
     // While set and still in the future, every reminder is held back until then.
     val pauseUntilMillis: Long?,
+    // Minimum spacing between two notifications; 0 lets them fire together.
+    val minNotificationGapSeconds: Int,
+    // When the last reminder was actually shown, for measuring that spacing.
+    val lastNotificationAtMillis: Long?,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
@@ -51,6 +55,16 @@ interface SettingsStore {
      * clobber it.
      */
     suspend fun savePauseUntil(atMillis: Long?)
+
+    /**
+     * How far apart notifications must land. Local for the same reason a pause
+     * is: it describes this device's notification drawer, not the account, so it
+     * stays out of the settings DTO where a pull could clobber it.
+     */
+    suspend fun saveMinNotificationGapSeconds(seconds: Int)
+
+    /** Records that a reminder was just shown, anchoring the next gap. */
+    suspend fun saveLastNotificationAt(millis: Long)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -67,6 +81,8 @@ class SessionStore(private val context: Context) : SettingsStore {
         val WAIT_MINUTES = stringPreferencesKey("wait_minutes")
         val DEFAULT_WAIT_INDEX = intPreferencesKey("default_wait_index")
         val PAUSE_UNTIL = longPreferencesKey("pause_until_millis")
+        val MIN_NOTIFICATION_GAP = intPreferencesKey("min_notification_gap_seconds")
+        val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -94,6 +110,9 @@ class SessionStore(private val context: Context) : SettingsStore {
             ),
             defaultWaitIndex = prefs[Keys.DEFAULT_WAIT_INDEX] ?: 0,
             pauseUntilMillis = prefs[Keys.PAUSE_UNTIL],
+            minNotificationGapSeconds =
+                prefs[Keys.MIN_NOTIFICATION_GAP] ?: DEFAULT_NOTIFICATION_GAP_SECONDS,
+            lastNotificationAtMillis = prefs[Keys.LAST_NOTIFICATION_AT],
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -133,6 +152,14 @@ class SessionStore(private val context: Context) : SettingsStore {
         context.dataStore.edit {
             if (atMillis == null) it.remove(Keys.PAUSE_UNTIL) else it[Keys.PAUSE_UNTIL] = atMillis
         }
+    }
+
+    override suspend fun saveMinNotificationGapSeconds(seconds: Int) {
+        context.dataStore.edit { it[Keys.MIN_NOTIFICATION_GAP] = seconds }
+    }
+
+    override suspend fun saveLastNotificationAt(millis: Long) {
+        context.dataStore.edit { it[Keys.LAST_NOTIFICATION_AT] = millis }
     }
 
     override suspend fun markSettingsDirty() {

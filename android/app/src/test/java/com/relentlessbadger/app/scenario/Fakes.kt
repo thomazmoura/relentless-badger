@@ -3,6 +3,7 @@ package com.relentlessbadger.app.scenario
 import com.relentlessbadger.app.data.BadgerApi
 import com.relentlessbadger.app.data.CompleteTaskRequest
 import com.relentlessbadger.app.data.CreateTaskRequest
+import com.relentlessbadger.app.data.DEFAULT_NOTIFICATION_GAP_SECONDS
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.LoginResponse
 import com.relentlessbadger.app.data.Session
@@ -206,6 +207,10 @@ class MutableClock(var nowMillis: Long) : TimeSource {
     fun advanceMinutes(minutes: Int) {
         nowMillis += minutes * 60_000L
     }
+
+    fun advanceSeconds(seconds: Int) {
+        nowMillis += seconds * 1_000L
+    }
 }
 
 class RecordingReminderScheduler : ReminderScheduler {
@@ -249,6 +254,8 @@ class RecordingSyncScheduler : SyncScheduler {
 class FakeSettingsStore : SettingsStore {
     var settings = SettingsDto(60, 15, listOf(60, 240), 0)
     var pauseUntilMillis: Long? = null
+    var minNotificationGapSeconds = DEFAULT_NOTIFICATION_GAP_SECONDS
+    var lastNotificationAtMillis: Long? = null
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -261,6 +268,8 @@ class FakeSettingsStore : SettingsStore {
         waitMinutes = settings.waitMinutes,
         defaultWaitIndex = settings.defaultWaitIndex,
         pauseUntilMillis = pauseUntilMillis,
+        minNotificationGapSeconds = minNotificationGapSeconds,
+        lastNotificationAtMillis = lastNotificationAtMillis,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {
@@ -273,6 +282,14 @@ class FakeSettingsStore : SettingsStore {
 
     override suspend fun savePauseUntil(atMillis: Long?) {
         pauseUntilMillis = atMillis
+    }
+
+    override suspend fun saveMinNotificationGapSeconds(seconds: Int) {
+        minNotificationGapSeconds = seconds
+    }
+
+    override suspend fun saveLastNotificationAt(millis: Long) {
+        lastNotificationAtMillis = millis
     }
 
     override suspend fun markSettingsDirty() {
