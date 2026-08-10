@@ -15,6 +15,12 @@ class ComputeNextFireTest {
     }
 
     @Test
+    fun `a zero initial delay fires at creation time`() {
+        val createdAt = 1_000_000L
+        assertEquals(createdAt, computeNextFire(createdAt, 0, 15, nowMillis = createdAt))
+    }
+
+    @Test
     fun `after the first reminder it repeats on the interval`() {
         val createdAt = 1_000_000L
         // 70 min in: first fire (60m) passed, next repeat lands at 75m.

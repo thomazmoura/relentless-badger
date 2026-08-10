@@ -87,4 +87,14 @@ class CreateTaskScenarios : ScenarioTest() {
         assertEquals(30, pushed.initialDelayMinutes)
         assertEquals(5, pushed.repeatIntervalMinutes)
     }
+
+    @Test
+    fun `a zero first-reminder delay arms the notification immediately`() = scenario {
+        givenLocalSettings(initialDelayMinutes = 0, repeatIntervalMinutes = 5)
+
+        val task = whenTaskCreated("urgent task")
+
+        assertEquals(0, task.initialDelayMinutes)
+        thenAlarmScheduledAt(task.id, task.createdAtMillis)
+    }
 }

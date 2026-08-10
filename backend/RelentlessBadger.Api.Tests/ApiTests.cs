@@ -336,21 +336,21 @@ public class ApiTests : IClassFixture<TestAppFactory>
         Assert.Equal(0, defaults.DefaultWaitIndex);
 
         var putResponse = await client.PutAsJsonAsync(
-            "/me/settings", new SettingsDto(30, 5, [15, 90, 300, 480], 2));
+            "/me/settings", new SettingsDto(0, 5, [15, 90, 300, 480], 2));
         putResponse.EnsureSuccessStatusCode();
 
         var updated = await client.GetFromJsonAsync<SettingsDto>("/me/settings");
-        Assert.Equal(30, updated!.InitialDelayMinutes);
+        Assert.Equal(0, updated!.InitialDelayMinutes);
         Assert.Equal(5, updated.RepeatIntervalMinutes);
         Assert.Equal([15, 90, 300, 480], updated.WaitMinutes);
         Assert.Equal(2, updated.DefaultWaitIndex);
 
         var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("water plants")))
             .Content.ReadFromJsonAsync<TaskDto>();
-        Assert.Equal(30, task!.InitialDelayMinutes);
+        Assert.Equal(0, task!.InitialDelayMinutes);
         Assert.Equal(5, task.RepeatIntervalMinutes);
 
-        var invalid = await client.PutAsJsonAsync("/me/settings", new SettingsDto(0, 5, [90, 300], 0));
+        var invalid = await client.PutAsJsonAsync("/me/settings", new SettingsDto(-1, 5, [90, 300], 0));
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
     }
 

@@ -47,7 +47,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           <input
             matInput
             type="number"
-            min="1"
+            min="0"
             [ngModel]="initialDelay()"
             (ngModelChange)="initialDelay.set($event)"
           />
@@ -198,10 +198,10 @@ export class SettingsPage {
   readonly normalizedServerUrl = computed(() => this.serverUrl().trim().replace(/\/+$/, ''));
 
   readonly valid = computed(() => {
-    const numbers = [this.initialDelay(), this.repeatInterval(), ...this.waits()].map(
-      parsePositive,
-    );
+    const initialDelay = parseNonNegative(this.initialDelay());
+    const numbers = [this.repeatInterval(), ...this.waits()].map(parsePositive);
     return (
+      initialDelay !== null &&
       numbers.every((value) => value !== null) &&
       this.waits().length > 0 &&
       this.defaultWaitIndex() >= 0 &&
@@ -229,7 +229,7 @@ export class SettingsPage {
     if (!this.valid()) return;
     await this.state.saveSettings(
       {
-        initialDelayMinutes: parsePositive(this.initialDelay())!,
+        initialDelayMinutes: parseNonNegative(this.initialDelay())!,
         repeatIntervalMinutes: parsePositive(this.repeatInterval())!,
         waitMinutes: this.waits().map((wait) => parsePositive(wait)!),
         defaultWaitIndex: this.defaultWaitIndex(),
@@ -271,4 +271,10 @@ function parsePositive(text: string): number | null {
   if (!/^\d+$/.test(trimmed)) return null;
   const value = Number(trimmed);
   return value >= 1 ? value : null;
+}
+
+function parseNonNegative(text: string): number | null {
+  const trimmed = String(text).trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  return Number(trimmed);
 }

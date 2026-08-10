@@ -12,6 +12,11 @@ describe('computeNextFire', () => {
     expect(next).toBe(createdAt + 60 * minute);
   });
 
+  it('a zero initial delay fires at creation time', () => {
+    const createdAt = 1_000_000;
+    expect(computeNextFire(createdAt, 0, 15, createdAt)).toBe(createdAt);
+  });
+
   it('after the first reminder it repeats on the interval', () => {
     const createdAt = 1_000_000;
     // 70 min in: first fire (60m) passed, next repeat lands at 75m.

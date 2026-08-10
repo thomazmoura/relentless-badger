@@ -90,4 +90,13 @@ describe('creating a task', () => {
     expect(badger.server.receivedCreates[0].initialDelayMinutes).toBe(30);
     expect(badger.server.receivedCreates[0].repeatIntervalMinutes).toBe(5);
   });
+
+  it('a zero first-reminder delay arms the notification immediately', async () => {
+    await badger.givenLocalSettings(0, 5);
+
+    const task = await badger.whenTaskCreated('urgent task');
+
+    expect(task.initialDelayMinutes).toBe(0);
+    badger.thenAlarmScheduledAt(task.id, task.createdAtMillis);
+  });
 });

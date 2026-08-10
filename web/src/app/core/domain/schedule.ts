@@ -15,7 +15,7 @@ export const MINUTE_MILLIS = 60_000;
 /**
  * First reminder fires at [firstWarningAtMillis] when set, otherwise
  * initialDelay after creation; afterwards it repeats every repeatInterval.
- * Returns the earliest slot in the future.
+ * Returns the earliest slot at or after now.
  */
 export function computeNextFire(
   createdAtMillis: number,
@@ -25,7 +25,7 @@ export function computeNextFire(
   firstWarningAtMillis: number | null = null,
 ): number {
   const first = firstWarningAtMillis ?? createdAtMillis + initialDelayMinutes * MINUTE_MILLIS;
-  if (first > nowMillis) return first;
+  if (first >= nowMillis) return first;
   const interval = repeatIntervalMinutes * MINUTE_MILLIS;
   const periodsElapsed = Math.trunc((nowMillis - first) / interval) + 1;
   return first + periodsElapsed * interval;

@@ -18,10 +18,10 @@ public static class SettingsEndpoints
 
         group.MapPut("/settings", async (SettingsDto settings, ClaimsPrincipal principal, AppDbContext db) =>
         {
-            if (settings.InitialDelayMinutes < 1 || settings.RepeatIntervalMinutes < 1 ||
+            if (settings.InitialDelayMinutes < 0 || settings.RepeatIntervalMinutes < 1 ||
                 settings.WaitMinutes is null || settings.WaitMinutes.Any(w => w < 1))
             {
-                return Results.BadRequest(new { error = "Delays must be at least 1 minute." });
+                return Results.BadRequest(new { error = "The first reminder delay cannot be negative; other delays must be at least 1 minute." });
             }
 
             if (settings.WaitMinutes.Length is 0 || settings.WaitMinutes.Length > SettingsDto.MaxWaits)

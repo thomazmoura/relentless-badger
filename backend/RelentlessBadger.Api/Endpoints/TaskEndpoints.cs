@@ -67,7 +67,7 @@ public static class TaskEndpoints
                 UserId = user.Id,
                 Title = title,
                 CreatedAt = request.CreatedAt?.ToUniversalTime() ?? DateTime.UtcNow,
-                InitialDelayMinutes = Math.Max(1, request.InitialDelayMinutes ?? user.InitialDelayMinutes),
+                InitialDelayMinutes = Math.Max(0, request.InitialDelayMinutes ?? user.InitialDelayMinutes),
                 RepeatIntervalMinutes = Math.Max(1, request.RepeatIntervalMinutes ?? user.RepeatIntervalMinutes),
                 FirstWarningAt = request.FirstWarningAt?.ToUniversalTime(),
                 RecurEveryN = request.RecurEveryN,

@@ -595,7 +595,7 @@ fun OpenTaskEntity.mergeServerSchedule(dto: TaskDto, nowMillis: Long): OpenTaskE
 /**
  * First reminder fires at [firstWarningAtMillis] when set, otherwise initialDelay
  * after creation; afterwards it repeats every repeatInterval. Returns the earliest
- * slot in the future.
+ * slot at or after now.
  */
 fun computeNextFire(
     createdAtMillis: Long,
@@ -605,7 +605,7 @@ fun computeNextFire(
     firstWarningAtMillis: Long? = null,
 ): Long {
     val first = firstWarningAtMillis ?: (createdAtMillis + initialDelayMinutes * 60_000L)
-    if (first > nowMillis) return first
+    if (first >= nowMillis) return first
     val interval = repeatIntervalMinutes * 60_000L
     val periodsElapsed = (nowMillis - first) / interval + 1
     return first + periodsElapsed * interval

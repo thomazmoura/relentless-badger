@@ -87,7 +87,7 @@ fun SettingsScreen(
     val repeatIntervalValue = repeatInterval.toIntOrNull()
     val waitValues = waits.map { it.toIntOrNull() }
     val notificationGapValue = notificationGap.toIntOrNull()
-    val valid = (initialDelayValue ?: 0) >= 1 && (repeatIntervalValue ?: 0) >= 1 &&
+    val valid = (initialDelayValue ?: -1) >= 0 && (repeatIntervalValue ?: 0) >= 1 &&
         waitValues.isNotEmpty() && waitValues.all { (it ?: 0) >= 1 } &&
         defaultWaitIndex in waits.indices &&
         (notificationGapValue ?: -1) >= 0 &&
@@ -125,7 +125,7 @@ fun SettingsScreen(
                 label = { Text("First reminder after (minutes)") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                isError = initialDelay.isNotEmpty() && (initialDelayValue ?: 0) < 1,
+                isError = initialDelay.isNotEmpty() && (initialDelayValue ?: -1) < 0,
                 modifier = Modifier.fillMaxWidth(),
             )
 
