@@ -119,8 +119,12 @@ class TaskRepository(
      * offline. The row stays flagged pendingDone until a sync pushes it.
      * Completing a recurring task spawns the next occurrence as a fresh
      * pendingCreate row, so recurrence works offline too.
+     *
+     * [atMillis] backdates the completion for a task that was really done
+     * earlier; null stamps it now.
      */
-    suspend fun completeTask(id: String) = closeTask(id, cancelled = false)
+    suspend fun completeTask(id: String, atMillis: Long? = null) =
+        closeTask(id, cancelled = false, atMillis = atMillis)
 
     /**
      * Closes the task without doing it: same effect as [completeTask] — nagging
@@ -129,16 +133,23 @@ class TaskRepository(
      */
     suspend fun cancelTask(id: String) = closeTask(id, cancelled = true)
 
-    private suspend fun closeTask(id: String, cancelled: Boolean) {
+    private suspend fun closeTask(id: String, cancelled: Boolean, atMillis: Long? = null) {
         val task = dao.getById(id) ?: return
+        // Clamped to the task's own lifetime, so no picker — however stale — can
+        // claim the task was done before it existed or in the future.
+        val completedAt = atMillis?.coerceIn(task.createdAtMillis, timeSource.now())
+            ?: timeSource.now()
         // Cached before the open row is flagged (and eventually deleted by the
         // sync flush), so the calendar's history survives the completion. It is
         // also what carries `cancelled` until the push happens.
         completedDao.upsert(
-            CompletedTaskEntity(task.id, task.title, timeSource.now(), task.seriesId, cancelled),
+            CompletedTaskEntity(task.id, task.title, completedAt, task.seriesId, cancelled),
         )
         dao.markPendingDone(id)
         scheduler.cancel(id)
+        // Deliberately not given `completedAt`: the next occurrence is anchored
+        // after the present moment, so backdating a late completion doesn't
+        // spawn one that is already overdue and nagging.
         task.recurrence()?.let { spawnNextOccurrence(task, it) }
         syncScheduler.requestSync()
     }

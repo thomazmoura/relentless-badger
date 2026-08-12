@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, effect, inject } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  computed,
+  effect,
+  inject,
+  viewChild,
+} from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog } from '@angular/material/dialog';
@@ -55,7 +63,7 @@ import { TaskRow } from './task-row';
       </button>
     </mat-toolbar>
 
-    <div class="body">
+    <div class="body" #body>
       <div class="page-body">
         <app-quick-add />
 
@@ -92,6 +100,7 @@ import { TaskRow } from './task-row';
               [waitMinutes]="state.session().waitMinutes"
               (edit)="editSchedule(task)"
               (done)="state.completeTask(task.id)"
+              (donePreviously)="donePreviously(task)"
               (cancelTask)="state.cancelTask(task.id)"
               (snooze)="state.snoozeTask(task.id, $event)"
               (pickExactWait)="pickExactWait(task)"
@@ -108,6 +117,7 @@ import { TaskRow } from './task-row';
                 [waitMinutes]="state.session().waitMinutes"
                 (edit)="editSchedule(task)"
                 (done)="state.completeTask(task.id)"
+                (donePreviously)="donePreviously(task)"
                 (cancelTask)="state.cancelTask(task.id)"
               />
               <mat-divider />
@@ -131,6 +141,9 @@ import { TaskRow } from './task-row';
       flex: 1;
       overflow-y: auto;
       padding: 1rem;
+      // Rows reorder as nag times change; letting the browser hold its anchor
+      // steady means chasing the row that moved instead of the list.
+      overflow-anchor: none;
     }
     .banner {
       margin: 1rem 0;
@@ -161,6 +174,8 @@ export class TasksPage {
   private readonly snackBar = inject(MatSnackBar);
 
   readonly use24Hour = prefers24Hour();
+
+  private readonly body = viewChild.required<ElementRef<HTMLElement>>('body');
 
   private readonly partitioned = computed(() => {
     const now = this.state.nowMillis();
@@ -193,6 +208,16 @@ export class TasksPage {
         .subscribe(() => void this.state.undoDismissSuggestion(dismissed));
     });
 
+    // Acting on a task usually moves it down the list, and the tasks that end up
+    // on top are the ones firing soonest — exactly what the user needs to see to
+    // decide whether they want to wait on those too.
+    effect(() => {
+      if (this.state.taskListResetToken() === 0) return;
+      // Instant, not smooth: the list re-renders in the same frame and a queued
+      // smooth animation gets dropped.
+      this.body().nativeElement.scrollTop = 0;
+    });
+
     // A reminder tapped on its body asks for the wait picker.
     effect(() => {
       const task = this.state.waitPickerTask();
@@ -220,6 +245,26 @@ export class TasksPage {
       .afterClosed()
       .toPromise();
     if (typeof picked === 'number') await this.state.snoozeUntil(task.id, picked);
+  }
+
+  /**
+   * Closes a task the user actually finished earlier. The window is the task's own
+   * lifetime: it can't have been done before it was created, nor later than now.
+   */
+  async donePreviously(task: OpenTask): Promise<void> {
+    const now = this.state.nowMillis();
+    const picked = await this.dialog
+      .open(DateTimePickerDialog, {
+        data: {
+          title: task.title,
+          initialMillis: now,
+          minMillis: task.createdAtMillis,
+          maxMillis: now,
+        },
+      })
+      .afterClosed()
+      .toPromise();
+    if (typeof picked === 'number') await this.state.completeTask(task.id, picked);
   }
 
   private async openWaitOptions(task: OpenTask): Promise<void> {

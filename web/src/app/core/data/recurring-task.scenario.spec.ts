@@ -94,6 +94,26 @@ describe('recurring tasks', () => {
     );
   });
 
+  it('backdating a recurring completion still anchors the next occurrence after now', async () => {
+    badger.givenOffline();
+    const startAt = badger.clock.now() + 60 * MINUTE;
+    const task = await badger.whenTaskCreated('water plants', startAt, daily);
+    badger.whenTimeAdvancesMinutes(3 * 24 * 60); // done three days ago, tapped today
+
+    await badger.whenTaskCompleted(task.id, badger.clock.now() - 3 * day);
+
+    const active = await badger.taskDao.getActive();
+    expect(active.length).toBe(1);
+    const spawned = active[0];
+    expect(
+      spawned.firstWarningAtMillis!,
+      'a backdated completion must not spawn an already-overdue occurrence',
+    ).toBeGreaterThan(badger.clock.now());
+    expect(spawned.firstWarningAtMillis).toBe(
+      computeNextOccurrence(startAt, daily, badger.clock.now()),
+    );
+  });
+
   it('a recurring task pulled from another device spawns on completion', async () => {
     const startAt = badger.clock.now() + 60 * MINUTE;
     const dto = badger.server.seedOpenTask({

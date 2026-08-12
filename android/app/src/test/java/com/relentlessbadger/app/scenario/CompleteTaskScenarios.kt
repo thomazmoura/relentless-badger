@@ -92,6 +92,53 @@ class CompleteTaskScenarios : ScenarioTest() {
     }
 
     @Test
+    fun `marking a task done previously credits it at the chosen moment, not now`() = scenario {
+        val task = givenSyncedTask("water plants")
+        val doneAt = clock.now()
+        whenTimeAdvancesMinutes(300) // remembered to tap the check five hours later
+
+        whenTaskCompleted(task.id, atMillis = doneAt)
+
+        thenTaskGone("water plants")
+        thenCompletionCached("water plants", atMillis = doneAt, cancelled = false)
+
+        whenSyncRuns()
+
+        assertEquals(
+            "server records the backdated completion",
+            Instant.ofEpochMilli(doneAt).toString(),
+            server.tasks[task.id]?.completedAt,
+        )
+    }
+
+    @Test
+    fun `a completion backdated before the task existed is clamped to its creation`() = scenario {
+        val task = whenTaskCreated("water plants")
+
+        whenTaskCompleted(task.id, atMillis = task.createdAtMillis - 7 * 24 * 60 * BadgerScenario.MINUTE)
+
+        thenCompletionCached("water plants", atMillis = task.createdAtMillis)
+    }
+
+    @Test
+    fun `a completion dated in the future is clamped to now`() = scenario {
+        val task = givenSyncedTask("water plants")
+
+        whenTaskCompleted(task.id, atMillis = clock.now() + 24 * 60 * BadgerScenario.MINUTE)
+
+        thenCompletionCached("water plants", atMillis = clock.now())
+    }
+
+    @Test
+    fun `completing without a moment still stamps the completion now`() = scenario {
+        val task = givenSyncedTask("water plants")
+
+        whenTaskCompleted(task.id)
+
+        thenCompletionCached("water plants", atMillis = clock.now())
+    }
+
+    @Test
     fun `a task created and completed entirely offline reaches the server as a completed task`() = scenario {
         givenOffline()
 

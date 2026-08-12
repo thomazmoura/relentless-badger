@@ -12,8 +12,9 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
 
 /**
  * One task. The whole row opens the schedule editor; the snooze menu is
- * anchored to its button; Done completes on click and offers "Cancel task" on
- * long-press or right-click, the way the Android circle does.
+ * anchored to its button; Done completes on click and offers the other ways out —
+ * "Done previously" and "Cancel task" — on long-press or right-click, the way the
+ * Android circle does.
  */
 @Component({
   selector: 'app-task-row',
@@ -67,6 +68,10 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
         <mat-icon>check</mat-icon>
       </button>
       <mat-menu #closeMenu>
+        <button mat-menu-item (click)="donePreviously.emit()">
+          <mat-icon>history</mat-icon>
+          <span>Done previously</span>
+        </button>
         <button mat-menu-item (click)="cancelTask.emit()">
           <mat-icon>close</mat-icon>
           <span>Cancel task</span>
@@ -127,6 +132,7 @@ export class TaskRow {
 
   readonly edit = output<void>();
   readonly done = output<void>();
+  readonly donePreviously = output<void>();
   readonly cancelTask = output<void>();
   readonly snooze = output<number>();
   readonly pickExactWait = output<void>();

@@ -102,8 +102,8 @@ export class BadgerScenario {
     return this.repository.addTask(title, firstWarningAtMillis, recurrence);
   }
 
-  whenTaskCompleted(id: string): Promise<void> {
-    return this.repository.completeTask(id);
+  whenTaskCompleted(id: string, atMillis?: number): Promise<void> {
+    return this.repository.completeTask(id, atMillis);
   }
 
   whenTaskCancelled(id: string): Promise<void> {

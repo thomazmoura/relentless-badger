@@ -97,6 +97,26 @@ class RecurringTaskScenarios : ScenarioTest() {
     }
 
     @Test
+    fun `backdating a recurring completion still anchors the next occurrence after now`() = scenario {
+        givenOffline()
+        val startAt = clock.now() + 60 * BadgerScenario.MINUTE
+        val task = whenTaskCreated("water plants", startAt, daily)
+        whenTimeAdvancesMinutes(3 * 24 * 60) // done three days ago, tapped today
+
+        whenTaskCompleted(task.id, atMillis = clock.now() - 3 * 24 * 60 * BadgerScenario.MINUTE)
+
+        val spawned = taskDao.getActive().single()
+        assertTrue(
+            "a backdated completion must not spawn an already-overdue occurrence",
+            spawned.firstWarningAtMillis!! > clock.now(),
+        )
+        assertEquals(
+            computeNextOccurrence(startAt, daily, clock.now()),
+            spawned.firstWarningAtMillis,
+        )
+    }
+
+    @Test
     fun `a recurring task pulled from another device spawns on completion`() = scenario {
         val startAt = clock.now() + 60 * BadgerScenario.MINUTE
         val dto = server.seedOpenTask(

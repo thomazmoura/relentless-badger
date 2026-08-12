@@ -51,6 +51,15 @@ export class AppState {
   readonly busy = signal(false);
   readonly errorMessage = signal<string | null>(null);
 
+  /**
+   * Bumped whenever the user acts on a task. Open tasks are sorted by next fire
+   * time, so acting on one usually moves it — and the list would otherwise stay
+   * anchored on the moved row, hiding whatever is about to fire next. Deliberately
+   * not bumped by ticks or syncs: a background reorder must not move the viewport
+   * out from under someone who is reading.
+   */
+  readonly taskListResetToken = signal(0);
+
   /** No Google client id in this build means only the dev bypass can sign in. */
   readonly devLoginAvailable = this.google.devLoginAvailable;
   readonly configuredBaseUrl = environment.apiBaseUrl;
@@ -186,12 +195,15 @@ export class AppState {
     await this.loadTitles();
   }
 
-  async completeTask(id: string): Promise<void> {
-    await this.runBusy(() => this.repository.completeTask(id));
+  /** `atMillis` closes the task as done at an earlier moment; undefined means now. */
+  async completeTask(id: string, atMillis?: number): Promise<void> {
+    await this.runBusy(() => this.repository.completeTask(id, atMillis));
+    this.resetTaskList();
   }
 
   async cancelTask(id: string): Promise<void> {
     await this.runBusy(() => this.repository.cancelTask(id));
+    this.resetTaskList();
   }
 
   beginEditSchedule(task: OpenTask): void {
@@ -208,6 +220,7 @@ export class AppState {
     await this.runBusy(() =>
       this.repository.editSchedule(id, firstWarningAtMillis, repeatIntervalMinutes, recurrence),
     );
+    this.resetTaskList();
   }
 
   /** Opened from a reminder's body tap; silently no-ops if the task is gone. */
@@ -219,12 +232,14 @@ export class AppState {
   async snoozeTask(id: string, minutes: number): Promise<void> {
     this.waitPickerTask.set(null);
     await this.runBusy(() => this.repository.snoozeTask(id, minutes));
+    this.resetTaskList();
   }
 
   async snoozeUntil(id: string, atMillis: number): Promise<void> {
     this.waitPickerTask.set(null);
     this.exactWaitTask.set(null);
     await this.runBusy(() => this.repository.snoozeUntil(id, atMillis));
+    this.resetTaskList();
   }
 
   async saveSettings(settings: SettingsDto, onDone: () => void): Promise<void> {
@@ -266,6 +281,10 @@ export class AppState {
 
   async requestNotificationPermission(): Promise<void> {
     await this.badger.reminders.requestPermission();
+  }
+
+  private resetTaskList(): void {
+    this.taskListResetToken.update((token) => token + 1);
   }
 
   private async loadTitles(): Promise<void> {

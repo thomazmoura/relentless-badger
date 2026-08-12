@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDatepickerModule } from '@angular/material/datepicker';
@@ -11,6 +11,13 @@ import { epochFor, partsAt, systemZone } from '../../core/domain/time';
 export interface DateTimePickerData {
   readonly title: string;
   readonly initialMillis: number | null;
+  /**
+   * Inclusive bounds on the selectable days. Only day-precision, matching the
+   * Android flow: a caller that also cares about the time of day has to clamp
+   * the result itself.
+   */
+  readonly minMillis?: number;
+  readonly maxMillis?: number;
 }
 
 /**
@@ -35,7 +42,13 @@ export interface DateTimePickerData {
     <mat-dialog-content>
       <mat-form-field appearance="outline" class="field">
         <mat-label>Date</mat-label>
-        <input matInput [matDatepicker]="datePicker" [(ngModel)]="date" />
+        <input
+          matInput
+          [matDatepicker]="datePicker"
+          [min]="minDate"
+          [max]="maxDate"
+          [(ngModel)]="date"
+        />
         <mat-datepicker-toggle matIconSuffix [for]="datePicker" />
         <mat-datepicker #datePicker />
       </mat-form-field>
@@ -48,7 +61,13 @@ export interface DateTimePickerData {
     </mat-dialog-content>
     <mat-dialog-actions align="end">
       <button matButton mat-dialog-close>Cancel</button>
-      <button matButton="filled" [disabled]="!date() || !time()" (click)="confirm()">Set</button>
+      <button
+        matButton="filled"
+        [disabled]="!date() || !time() || outOfRange()"
+        (click)="confirm()"
+      >
+        Set
+      </button>
     </mat-dialog-actions>
   `,
   styles: `
@@ -71,10 +90,27 @@ export class DateTimePickerDialog {
     this.data.initialMillis ? new Date(this.data.initialMillis) : atNineInTheMorning(),
   );
 
+  readonly minDate = this.data.minMillis === undefined ? null : startOfDay(this.data.minMillis);
+  readonly maxDate = this.data.maxMillis === undefined ? null : startOfDay(this.data.maxMillis);
+
+  /**
+   * The calendar greys the disallowed days out, but the field can still be typed
+   * into; the Set button has to refuse what the calendar wouldn't offer.
+   */
+  readonly outOfRange = computed(() => {
+    const date = this.date();
+    if (!date) return false;
+    const day = startOfDay(date.getTime()).getTime();
+    return (
+      (this.minDate !== null && day < this.minDate.getTime()) ||
+      (this.maxDate !== null && day > this.maxDate.getTime())
+    );
+  });
+
   confirm(): void {
     const date = this.date();
     const time = this.time();
-    if (!date || !time) return;
+    if (!date || !time || this.outOfRange()) return;
     // Both controls hand back a local Date; only the date half of one and the
     // clock half of the other are meaningful.
     this.dialogRef.close(
@@ -92,6 +128,13 @@ export class DateTimePickerDialog {
       ),
     );
   }
+}
+
+/** The local calendar day the instant falls on — the granularity the bounds work at. */
+function startOfDay(millis: number): Date {
+  const date = new Date(millis);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
 function atNineInTheMorning(): Date {

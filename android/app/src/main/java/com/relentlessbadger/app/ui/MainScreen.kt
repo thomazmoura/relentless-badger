@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.CircleShape
@@ -39,6 +40,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDefaults
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +55,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -217,6 +220,16 @@ fun MainScreen(
 
             Spacer(Modifier.height(8.dp))
 
+            // LazyColumn anchors its scroll on the first visible item's key, so
+            // waiting on a task makes the viewport chase that row down the list —
+            // hiding the tasks that are about to fire, which are the ones worth
+            // deciding about. Hoisted above the empty branch so emptying and
+            // refilling the list doesn't lose the state.
+            val listState = rememberLazyListState()
+            LaunchedEffect(viewModel.taskListResetToken) {
+                if (viewModel.taskListResetToken > 0) listState.animateScrollToItem(0)
+            }
+
             if (tasks.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
@@ -235,7 +248,7 @@ fun MainScreen(
                 val (scheduled, active) = tasks.partition {
                     (it.firstWarningAtMillis ?: 0L) > nowMillis
                 }
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(active, key = { it.id }) { task ->
                         TaskRow(
                             task = task,
@@ -246,6 +259,7 @@ fun MainScreen(
                             use24Hour = use24Hour,
                             waitMinutes = waitMinutes,
                             onDone = { viewModel.completeTask(task.id) },
+                            onDonePreviously = { viewModel.donePreviouslyTask = task },
                             onCancel = { viewModel.cancelTask(task.id) },
                             onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
                             onPickDateTime = { viewModel.exactWaitTask = task },
@@ -272,6 +286,7 @@ fun MainScreen(
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
                                 onDone = { viewModel.completeTask(task.id) },
+                                onDonePreviously = { viewModel.donePreviouslyTask = task },
                                 onCancel = { viewModel.cancelTask(task.id) },
                                 onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
                                 onPickDateTime = { viewModel.exactWaitTask = task },
@@ -323,6 +338,22 @@ fun MainScreen(
                 viewModel.exactWaitTask = null
                 viewModel.snoozeUntil(task.id, atMillis)
             },
+        )
+    }
+
+    // Closing a task the user actually finished earlier. The window is the task's
+    // own lifetime: it can't have been done before it was created, nor later than
+    // right now.
+    viewModel.donePreviouslyTask?.let { task ->
+        DateTimePickerFlow(
+            initialMillis = null,
+            onDismiss = { viewModel.donePreviouslyTask = null },
+            onPicked = { atMillis ->
+                viewModel.donePreviouslyTask = null
+                viewModel.completeTask(task.id, atMillis)
+            },
+            minMillis = task.createdAtMillis,
+            maxMillis = nowMillis,
         )
     }
 
@@ -615,6 +646,10 @@ private fun WaitOptionsDialog(
  * The two-step date-then-time picker. The DatePicker returns UTC midnight for
  * the chosen calendar day; the result combines that date with the picked local
  * time in the device zone.
+ *
+ * [minMillis] and [maxMillis] bound the selectable days — inclusive, and only to
+ * day precision, so a caller that also cares about the time of day has to clamp
+ * the result itself.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -622,12 +657,33 @@ private fun DateTimePickerFlow(
     initialMillis: Long?,
     onDismiss: () -> Unit,
     onPicked: (Long) -> Unit,
+    minMillis: Long? = null,
+    maxMillis: Long? = null,
 ) {
     var pickedDateMillis by remember { mutableStateOf<Long?>(null) }
 
     if (pickedDateMillis == null) {
+        // The picker speaks UTC midnight, so the bounds have to be restated as
+        // the UTC midnight of the local day they fall on.
+        val minDay = minMillis?.let(::utcStartOfLocalDay)
+        val maxDay = maxMillis?.let(::utcStartOfLocalDay)
         val dateState = rememberDatePickerState(
             initialSelectedDateMillis = initialMillis ?: System.currentTimeMillis(),
+            yearRange = IntRange(
+                minMillis?.let(::localYearOf) ?: DatePickerDefaults.YearRange.first,
+                maxMillis?.let(::localYearOf) ?: DatePickerDefaults.YearRange.last,
+            ),
+            selectableDates = remember(minDay, maxDay) {
+                object : SelectableDates {
+                    override fun isSelectableDate(utcTimeMillis: Long): Boolean =
+                        (minDay == null || utcTimeMillis >= minDay) &&
+                            (maxDay == null || utcTimeMillis <= maxDay)
+
+                    override fun isSelectableYear(year: Int): Boolean =
+                        (minMillis == null || year >= localYearOf(minMillis)) &&
+                            (maxMillis == null || year <= localYearOf(maxMillis))
+                }
+            },
         )
         DatePickerDialog(
             onDismissRequest = onDismiss,
@@ -664,6 +720,17 @@ private fun DateTimePickerFlow(
     }
 }
 
+/**
+ * The instant's local calendar day, restated as UTC midnight — the currency the
+ * M3 DatePicker deals in.
+ */
+private fun utcStartOfLocalDay(epochMillis: Long): Long =
+    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+        .atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+private fun localYearOf(epochMillis: Long): Int =
+    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).year
+
 private val dateTimeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, h:mm a")
 private val dateTimeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
 
@@ -680,6 +747,7 @@ private fun TaskRow(
     quietHours: List<QuietRange>,
     use24Hour: Boolean,
     onDone: () -> Unit,
+    onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
     waitMinutes: List<Int>,
     onSnooze: (Int) -> Unit,
@@ -759,19 +827,24 @@ private fun TaskRow(
             }
         }
 
-        DoneButton(onDone = onDone, onCancel = onCancel)
+        DoneButton(onDone = onDone, onDonePreviously = onDonePreviously, onCancel = onCancel)
     }
 }
 
 /**
- * Tap closes the task as done; long-press offers the secondary way out —
- * cancelling, which closes it without crediting it. Hand-rolled rather than a
- * FilledTonalIconButton because the M3 icon buttons take no onLongClick; the
- * size and colours mirror the tonal button so the row looks unchanged.
+ * Tap closes the task as done now; long-press offers the other ways out —
+ * crediting it at an earlier moment, or cancelling, which closes it without
+ * crediting it at all. Hand-rolled rather than a FilledTonalIconButton because
+ * the M3 icon buttons take no onLongClick; the size and colours mirror the tonal
+ * button so the row looks unchanged.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun DoneButton(onDone: () -> Unit, onCancel: () -> Unit) {
+private fun DoneButton(
+    onDone: () -> Unit,
+    onDonePreviously: () -> Unit,
+    onCancel: () -> Unit,
+) {
     var menuOpen by remember { mutableStateOf(false) }
 
     Box {
@@ -796,6 +869,14 @@ private fun DoneButton(onDone: () -> Unit, onCancel: () -> Unit) {
             )
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text("Done previously") },
+                leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onDonePreviously()
+                },
+            )
             DropdownMenuItem(
                 text = { Text("Cancel task") },
                 leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },

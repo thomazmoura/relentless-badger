@@ -1,10 +1,11 @@
 import { NetworkError } from '../domain/errors';
 import { toIsoInstant } from '../domain/time';
-import { BadgerScenario } from '../testing/badger-scenario';
+import { BadgerScenario, MINUTE } from '../testing/badger-scenario';
 
 // Ported from CompleteTaskScenarios.kt.
 describe('completing a task', () => {
   let badger: BadgerScenario;
+  const day = 24 * 60 * MINUTE;
 
   beforeEach(() => {
     badger = new BadgerScenario();
@@ -85,6 +86,48 @@ describe('completing a task', () => {
       badger.server.tasks.get(task.id)?.completedAt,
       'server records the local completion time',
     ).toBe(toIsoInstant(completedAtMillis));
+  });
+
+  it('marking a task done previously credits it at the chosen moment, not now', async () => {
+    const task = await badger.givenSyncedTask('water plants');
+    const doneAt = badger.clock.now();
+    badger.whenTimeAdvancesMinutes(300); // remembered to tap the check five hours later
+
+    await badger.whenTaskCompleted(task.id, doneAt);
+
+    await badger.thenTaskGone('water plants');
+    await badger.thenCompletionCached('water plants', doneAt, false);
+
+    await badger.whenSyncRuns();
+
+    expect(
+      badger.server.tasks.get(task.id)?.completedAt,
+      'server records the backdated completion',
+    ).toBe(toIsoInstant(doneAt));
+  });
+
+  it('a completion backdated before the task existed is clamped to its creation', async () => {
+    const task = await badger.whenTaskCreated('water plants');
+
+    await badger.whenTaskCompleted(task.id, task.createdAtMillis - 7 * day);
+
+    await badger.thenCompletionCached('water plants', task.createdAtMillis);
+  });
+
+  it('a completion dated in the future is clamped to now', async () => {
+    const task = await badger.givenSyncedTask('water plants');
+
+    await badger.whenTaskCompleted(task.id, badger.clock.now() + day);
+
+    await badger.thenCompletionCached('water plants', badger.clock.now());
+  });
+
+  it('completing without a moment still stamps the completion now', async () => {
+    const task = await badger.givenSyncedTask('water plants');
+
+    await badger.whenTaskCompleted(task.id);
+
+    await badger.thenCompletionCached('water plants', badger.clock.now());
   });
 
   it('a task created and completed entirely offline reaches the server as a completed task', async () => {

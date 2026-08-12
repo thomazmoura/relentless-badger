@@ -3,6 +3,7 @@ package com.relentlessbadger.app.ui
 import android.content.Context
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
@@ -90,6 +91,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      */
     var exactWaitTask by mutableStateOf<OpenTaskEntity?>(null)
 
+    /**
+     * Task being closed as done at some earlier moment. Hosted here for the same
+     * reason as [exactWaitTask]: the picker outlives its row.
+     */
+    var donePreviouslyTask by mutableStateOf<OpenTaskEntity?>(null)
+
     var titleHistory by mutableStateOf<List<String>>(emptyList())
         private set
     val suggestions by derivedStateOf {
@@ -99,6 +106,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Title just removed from suggestions, awaiting its undo snackbar. */
     var dismissedSuggestion by mutableStateOf<String?>(null)
+
+    /**
+     * Bumped whenever the user acts on a task. Open tasks are sorted by next fire
+     * time, so acting on one usually moves it — and the list would otherwise stay
+     * anchored on the moved row, hiding whatever is about to fire next. Deliberately
+     * not bumped by ticks or syncs: a background reorder must not move the viewport
+     * out from under someone who is reading.
+     */
+    var taskListResetToken by mutableIntStateOf(0)
+        private set
 
     var busy by mutableStateOf(false)
         private set
@@ -182,15 +199,18 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
-    fun completeTask(id: String) {
+    /** [atMillis] closes the task as done at an earlier moment; null means now. */
+    fun completeTask(id: String, atMillis: Long? = null) {
         viewModelScope.launch {
-            container.repository.completeTask(id)
+            container.repository.completeTask(id, atMillis)
+            resetTaskList()
         }
     }
 
     fun cancelTask(id: String) {
         viewModelScope.launch {
             container.repository.cancelTask(id)
+            resetTaskList()
         }
     }
 
@@ -207,6 +227,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         editingTask = null
         launchBusy {
             container.repository.editSchedule(id, firstWarningAtMillis, repeatIntervalMinutes, recurrence)
+            resetTaskList()
         }
     }
 
@@ -224,13 +245,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun snoozeTask(id: String, minutes: Int) {
         viewModelScope.launch {
             container.repository.snoozeTask(id, minutes)
+            resetTaskList()
         }
     }
 
     fun snoozeUntil(id: String, atMillis: Long) {
         viewModelScope.launch {
             container.repository.snoozeUntil(id, atMillis)
+            resetTaskList()
         }
+    }
+
+    private fun resetTaskList() {
+        taskListResetToken++
     }
 
     fun pauseNotifications(minutes: Int) {

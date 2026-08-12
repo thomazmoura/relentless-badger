@@ -102,9 +102,12 @@ export class TaskRepository {
    * The row stays flagged pendingDone until a sync pushes it. Completing a
    * recurring task spawns the next occurrence as a fresh pendingCreate row, so
    * recurrence works offline too.
+   *
+   * `atMillis` backdates the completion for a task that was really done earlier;
+   * undefined stamps it now.
    */
-  async completeTask(id: string): Promise<void> {
-    await this.closeTask(id, false);
+  async completeTask(id: string, atMillis?: number): Promise<void> {
+    await this.closeTask(id, false, atMillis);
   }
 
   /**
@@ -116,21 +119,29 @@ export class TaskRepository {
     await this.closeTask(id, true);
   }
 
-  private async closeTask(id: string, cancelled: boolean): Promise<void> {
+  private async closeTask(id: string, cancelled: boolean, atMillis?: number): Promise<void> {
     const task = await this.dao.getById(id);
     if (task === null) return;
+    const now = this.timeSource.now();
+    // Clamped to the task's own lifetime, so no picker — however stale — can
+    // claim the task was done before it existed or in the future.
+    const completedAtMillis =
+      atMillis === undefined ? now : Math.min(Math.max(atMillis, task.createdAtMillis), now);
     // Cached before the open row is flagged (and eventually deleted by the sync
     // flush), so the calendar's history survives the completion. It is also what
     // carries `cancelled` until the push happens.
     await this.completedDao.upsert({
       id: task.id,
       title: task.title,
-      completedAtMillis: this.timeSource.now(),
+      completedAtMillis,
       seriesId: task.seriesId,
       cancelled,
     });
     await this.dao.markPendingDone(id);
     this.scheduler.cancel(id);
+    // spawnNextOccurrence deliberately doesn't see `completedAtMillis`: the next
+    // occurrence is anchored after the present moment, so backdating a late
+    // completion doesn't spawn one that is already overdue and nagging.
     const recurrence = taskRecurrence(task);
     if (recurrence !== null) {
       await this.spawnNextOccurrence(task, recurrence);

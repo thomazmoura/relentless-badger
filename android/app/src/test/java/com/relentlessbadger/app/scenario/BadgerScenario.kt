@@ -119,7 +119,8 @@ class BadgerScenario {
         recurrence: Recurrence? = null,
     ): OpenTaskEntity = repository.addTask(title, firstWarningAtMillis, recurrence)
 
-    suspend fun whenTaskCompleted(id: String) = repository.completeTask(id)
+    suspend fun whenTaskCompleted(id: String, atMillis: Long? = null) =
+        repository.completeTask(id, atMillis)
 
     suspend fun whenTaskCancelled(id: String) = repository.cancelTask(id)
 
