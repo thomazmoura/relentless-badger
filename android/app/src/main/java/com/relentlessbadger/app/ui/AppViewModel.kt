@@ -108,11 +108,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     var dismissedSuggestion by mutableStateOf<String?>(null)
 
     /**
-     * Bumped whenever the user acts on a task. Open tasks are sorted by next fire
-     * time, so acting on one usually moves it — and the list would otherwise stay
-     * anchored on the moved row, hiding whatever is about to fire next. Deliberately
-     * not bumped by ticks or syncs: a background reorder must not move the viewport
-     * out from under someone who is reading.
+     * Bumped when a task is added, scrolling the list back to the top. A new task
+     * fires soonest, so it sorts to the very top — off-screen, and easy to think
+     * the add silently failed. Deliberately the only trigger: the list otherwise
+     * holds its scroll position through every movement, whether the user acted or
+     * a nag fired in the background. Acting on a visible task only reorders rows
+     * at or below it, so the view is already right.
      */
     var taskListResetToken by mutableIntStateOf(0)
         private set
@@ -179,6 +180,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         quickAddRecurrence = null
         launchBusy {
             container.repository.addTask(trimmed, firstWarningAtMillis, recurrence)
+            resetTaskList()
             titleHistory = container.repository.titles()
         }
     }
@@ -203,14 +205,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun completeTask(id: String, atMillis: Long? = null) {
         viewModelScope.launch {
             container.repository.completeTask(id, atMillis)
-            resetTaskList()
         }
     }
 
     fun cancelTask(id: String) {
         viewModelScope.launch {
             container.repository.cancelTask(id)
-            resetTaskList()
         }
     }
 
@@ -227,7 +227,6 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         editingTask = null
         launchBusy {
             container.repository.editSchedule(id, firstWarningAtMillis, repeatIntervalMinutes, recurrence)
-            resetTaskList()
         }
     }
 
@@ -245,14 +244,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun snoozeTask(id: String, minutes: Int) {
         viewModelScope.launch {
             container.repository.snoozeTask(id, minutes)
-            resetTaskList()
         }
     }
 
     fun snoozeUntil(id: String, atMillis: Long) {
         viewModelScope.launch {
             container.repository.snoozeUntil(id, atMillis)
-            resetTaskList()
         }
     }
 

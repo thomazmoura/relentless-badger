@@ -122,6 +122,11 @@ fun MainScreen(
     val pauseUntilMillis = session?.pauseUntilMillis?.takeIf { it > nowMillis }
     val quietHours = session?.quietHours.orEmpty()
     var pausePickerOpen by remember { mutableStateOf(false) }
+    // Which task's snooze menu is open. Held here, by id, rather than inside the
+    // row: the rows are unkeyed so that the list doesn't scroll when tasks move,
+    // which means row-local state belongs to the position, not the task — an open
+    // menu would end up snoozing whatever task slid into that slot.
+    var openMenuTaskId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         requestNotificationPermission()
@@ -220,11 +225,13 @@ fun MainScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // LazyColumn anchors its scroll on the first visible item's key, so
-            // waiting on a task makes the viewport chase that row down the list —
-            // hiding the tasks that are about to fire, which are the ones worth
-            // deciding about. Hoisted above the empty branch so emptying and
-            // refilling the list doesn't lose the state.
+            // The rows below are deliberately unkeyed. LazyColumn anchors its
+            // scroll on the first visible item's key, so keyed rows make the
+            // viewport chase whichever row moved — and rows move on their own, as
+            // a fired nag or a sync rewrites the next fire time the list sorts by.
+            // Unkeyed, the viewport holds its position instead: whoever is two rows
+            // down stays two rows down. Hoisted above the empty branch so emptying
+            // and refilling the list doesn't lose the state.
             val listState = rememberLazyListState()
             LaunchedEffect(viewModel.taskListResetToken) {
                 if (viewModel.taskListResetToken > 0) listState.animateScrollToItem(0)
@@ -249,7 +256,7 @@ fun MainScreen(
                     (it.firstWarningAtMillis ?: 0L) > nowMillis
                 }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(active, key = { it.id }) { task ->
+                    items(active) { task ->
                         TaskRow(
                             task = task,
                             scheduled = false,
@@ -258,6 +265,10 @@ fun MainScreen(
                             quietHours = quietHours,
                             use24Hour = use24Hour,
                             waitMinutes = waitMinutes,
+                            menuExpanded = openMenuTaskId == task.id,
+                            onMenuExpandedChange = { expanded ->
+                                openMenuTaskId = task.id.takeIf { expanded }
+                            },
                             onDone = { viewModel.completeTask(task.id) },
                             onDonePreviously = { viewModel.donePreviouslyTask = task },
                             onCancel = { viewModel.cancelTask(task.id) },
@@ -268,7 +279,7 @@ fun MainScreen(
                         HorizontalDivider()
                     }
                     if (scheduled.isNotEmpty()) {
-                        item(key = "scheduled-header") {
+                        item {
                             Text(
                                 "Scheduled",
                                 style = MaterialTheme.typography.titleSmall,
@@ -276,7 +287,7 @@ fun MainScreen(
                                 modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
                             )
                         }
-                        items(scheduled, key = { it.id }) { task ->
+                        items(scheduled) { task ->
                             TaskRow(
                                 task = task,
                                 scheduled = true,
@@ -285,6 +296,10 @@ fun MainScreen(
                                 quietHours = quietHours,
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
+                                menuExpanded = openMenuTaskId == task.id,
+                                onMenuExpandedChange = { expanded ->
+                                    openMenuTaskId = task.id.takeIf { expanded }
+                                },
                                 onDone = { viewModel.completeTask(task.id) },
                                 onDonePreviously = { viewModel.donePreviouslyTask = task },
                                 onCancel = { viewModel.cancelTask(task.id) },
@@ -750,6 +765,8 @@ private fun TaskRow(
     onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
     waitMinutes: List<Int>,
+    menuExpanded: Boolean,
+    onMenuExpandedChange: (Boolean) -> Unit,
     onSnooze: (Int) -> Unit,
     onPickDateTime: () -> Unit,
     onEdit: () -> Unit,
@@ -796,20 +813,22 @@ private fun TaskRow(
 
         // Snoozing a task that hasn't started nagging is meaningless.
         if (!scheduled) {
-            var menuExpanded by remember { mutableStateOf(false) }
             Box {
-                IconButton(onClick = { menuExpanded = true }) {
+                IconButton(onClick = { onMenuExpandedChange(true) }) {
                     Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
                 }
                 // Anchored to the button so the options appear where the user is
                 // already looking.
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { onMenuExpandedChange(false) },
+                ) {
                     waitMinutes.forEach { minutes ->
                         DropdownMenuItem(
                             text = { Text("Wait ${formatDuration(minutes)}") },
                             leadingIcon = { Icon(Icons.Filled.Snooze, contentDescription = null) },
                             onClick = {
-                                menuExpanded = false
+                                onMenuExpandedChange(false)
                                 onSnooze(minutes)
                             },
                         )
@@ -819,7 +838,7 @@ private fun TaskRow(
                         text = { Text("Pick a date & time…") },
                         leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                         onClick = {
-                            menuExpanded = false
+                            onMenuExpandedChange(false)
                             onPickDateTime()
                         },
                     )
