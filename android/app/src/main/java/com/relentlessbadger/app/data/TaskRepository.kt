@@ -244,6 +244,45 @@ class TaskRepository(
     }
 
     /**
+     * Pulls a not-yet-started occurrence to now, so it starts nagging straight
+     * away — the mirror image of [snoozeTask]. The series is not re-anchored:
+     * the next occurrence is spawned first, off this occurrence's own start
+     * time, exactly as completing it would have, so a weekly task moves to next
+     * week rather than to a week from today.
+     *
+     * The advanced row drops the recurrence rule, which now lives on the spawned
+     * row — keeping it would spawn a second, conflicting occurrence when this
+     * one is completed. Its [seriesId] stays, so the completion record still
+     * ties back to the series.
+     *
+     * A task that is already nagging is left alone: there is nothing to advance,
+     * and re-running it would spawn another occurrence.
+     */
+    suspend fun advanceTask(id: String) {
+        val task = dao.getById(id) ?: return
+        val now = timeSource.now()
+        if ((task.firstWarningAtMillis ?: 0L) <= now) return
+        task.recurrence()?.let { spawnNextOccurrence(task, it) }
+        val advanced = task.copy(
+            firstWarningAtMillis = now,
+            nextFireAtMillis = computeNextFire(
+                task.createdAtMillis,
+                task.initialDelayMinutes,
+                task.repeatIntervalMinutes,
+                now,
+                now,
+            ),
+            recurEveryN = null,
+            recurUnit = null,
+            recurDaysOfWeek = null,
+            pendingUpdate = true,
+        )
+        dao.upsert(advanced)
+        arm(advanced)
+        syncScheduler.requestSync()
+    }
+
+    /**
      * A reminder alarm fired: show the nag and schedule the next repeat. The
      * chain stops once the task is completed (row removed or pendingDone).
      */

@@ -229,6 +229,12 @@ export class AppState {
     if (task) this.waitPickerTask.set(task);
   }
 
+  /** Starts a scheduled task nagging now, moving its series on to the next date. */
+  async advanceTask(id: string): Promise<void> {
+    await this.runBusy(() => this.repository.advanceTask(id));
+    this.resetTaskList();
+  }
+
   async snoozeTask(id: string, minutes: number): Promise<void> {
     this.waitPickerTask.set(null);
     await this.runBusy(() => this.repository.snoozeTask(id, minutes));

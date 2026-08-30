@@ -124,6 +124,10 @@ export class BadgerScenario {
     );
   }
 
+  whenTaskAdvanced(id: string): Promise<void> {
+    return this.repository.advanceTask(id);
+  }
+
   whenSnoozed(id: string, minutes: number): Promise<void> {
     return this.repository.snoozeTask(id, minutes);
   }

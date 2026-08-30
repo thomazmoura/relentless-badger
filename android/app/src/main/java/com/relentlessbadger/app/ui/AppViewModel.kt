@@ -241,6 +241,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Starts a scheduled task nagging now, moving its series on to the next date. */
+    fun advanceTask(id: String) {
+        viewModelScope.launch {
+            container.repository.advanceTask(id)
+        }
+    }
+
     fun snoozeTask(id: String, minutes: Int) {
         viewModelScope.launch {
             container.repository.snoozeTask(id, minutes)

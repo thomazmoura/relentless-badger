@@ -131,6 +131,8 @@ class BadgerScenario {
         recurrence: Recurrence? = null,
     ) = repository.editSchedule(id, firstWarningAtMillis, repeatIntervalMinutes, recurrence)
 
+    suspend fun whenTaskAdvanced(id: String) = repository.advanceTask(id)
+
     suspend fun whenSnoozed(id: String, minutes: Int) = repository.snoozeTask(id, minutes)
 
     suspend fun whenSnoozedUntil(id: String, atMillis: Long) = repository.snoozeUntil(id, atMillis)

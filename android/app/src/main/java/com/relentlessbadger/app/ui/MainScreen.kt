@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
@@ -274,6 +275,7 @@ fun MainScreen(
                             onCancel = { viewModel.cancelTask(task.id) },
                             onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
                             onPickDateTime = { viewModel.exactWaitTask = task },
+                            onAdvance = {},
                             onEdit = { viewModel.beginEditSchedule(task) },
                         )
                         HorizontalDivider()
@@ -305,6 +307,7 @@ fun MainScreen(
                                 onCancel = { viewModel.cancelTask(task.id) },
                                 onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
                                 onPickDateTime = { viewModel.exactWaitTask = task },
+                                onAdvance = { viewModel.advanceTask(task.id) },
                                 onEdit = { viewModel.beginEditSchedule(task) },
                             )
                             HorizontalDivider()
@@ -769,6 +772,7 @@ private fun TaskRow(
     onMenuExpandedChange: (Boolean) -> Unit,
     onSnooze: (Int) -> Unit,
     onPickDateTime: () -> Unit,
+    onAdvance: () -> Unit,
     onEdit: () -> Unit,
 ) {
     Row(
@@ -843,6 +847,12 @@ private fun TaskRow(
                         },
                     )
                 }
+            }
+        } else {
+            // The snooze slot, mirrored: a scheduled task can't be pushed later
+            // from here, but it can be pulled to now.
+            IconButton(onClick = onAdvance) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
             }
         }
 

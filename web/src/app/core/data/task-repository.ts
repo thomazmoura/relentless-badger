@@ -223,6 +223,50 @@ export class TaskRepository {
   }
 
   /**
+   * Pulls a not-yet-started occurrence to now, so it starts nagging straight
+   * away — the mirror image of [snoozeTask]. The series is not re-anchored: the
+   * next occurrence is spawned first, off this occurrence's own start time,
+   * exactly as completing it would have, so a weekly task moves to next week
+   * rather than to a week from today.
+   *
+   * The advanced row drops the recurrence rule, which now lives on the spawned
+   * row — keeping it would spawn a second, conflicting occurrence when this one
+   * is completed. Its seriesId stays, so the completion record still ties back
+   * to the series.
+   *
+   * A task that is already nagging is left alone: there is nothing to advance,
+   * and re-running it would spawn another occurrence.
+   */
+  async advanceTask(id: string): Promise<void> {
+    const task = await this.dao.getById(id);
+    if (task === null) return;
+    const now = this.timeSource.now();
+    if ((task.firstWarningAtMillis ?? 0) <= now) return;
+    const recurrence = taskRecurrence(task);
+    if (recurrence !== null) {
+      await this.spawnNextOccurrence(task, recurrence);
+    }
+    const advanced: OpenTask = {
+      ...task,
+      firstWarningAtMillis: now,
+      nextFireAtMillis: computeNextFire(
+        task.createdAtMillis,
+        task.initialDelayMinutes,
+        task.repeatIntervalMinutes,
+        now,
+        now,
+      ),
+      recurEveryN: null,
+      recurUnit: null,
+      recurDaysOfWeek: null,
+      pendingUpdate: true,
+    };
+    await this.dao.upsert(advanced);
+    this.scheduler.schedule(advanced);
+    this.syncScheduler.requestSync();
+  }
+
+  /**
    * Pushes the next nag out by [minutes] from now, reschedules the alarm and
    * clears the current reminder. Purely local: the new fire time lives in the
    * local database and is preserved across syncs, so the server never needs to

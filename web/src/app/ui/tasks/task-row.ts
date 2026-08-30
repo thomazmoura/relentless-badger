@@ -12,7 +12,8 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
 
 /**
  * One task. The whole row opens the schedule editor; the snooze menu is
- * anchored to its button; Done completes on click and offers the other ways out —
+ * anchored to its button; a scheduled task shows Advance in that slot instead,
+ * which pulls it to now. Done completes on click and offers the other ways out —
  * "Done previously" and "Cancel task" — on long-press or right-click, the way the
  * Android circle does.
  */
@@ -51,6 +52,16 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
             <span>Pick a date &amp; time…</span>
           </button>
         </mat-menu>
+      } @else {
+        <!-- The snooze slot, mirrored: a scheduled task can't be pushed later
+             from here, but it can be pulled to now. -->
+        <button
+          matIconButton
+          aria-label="Start nagging now"
+          (click)="$event.stopPropagation(); advance.emit()"
+        >
+          <mat-icon>play_arrow</mat-icon>
+        </button>
       }
 
       <button
@@ -134,6 +145,7 @@ export class TaskRow {
   readonly done = output<void>();
   readonly donePreviously = output<void>();
   readonly cancelTask = output<void>();
+  readonly advance = output<void>();
   readonly snooze = output<number>();
   readonly pickExactWait = output<void>();
 

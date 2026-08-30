@@ -119,6 +119,7 @@ import { TaskRow } from './task-row';
                 (done)="state.completeTask(task.id)"
                 (donePreviously)="donePreviously(task)"
                 (cancelTask)="state.cancelTask(task.id)"
+                (advance)="state.advanceTask(task.id)"
               />
               <mat-divider />
             }
