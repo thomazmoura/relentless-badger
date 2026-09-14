@@ -30,6 +30,9 @@ interface ReminderScheduler {
 
     /** [defaultWaitMinutes] backs the notification's one-tap Wait button. */
     fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int)
+
+    /** Posts the reminder-shaped notification behind the Advanced settings button. */
+    fun showTestNotification(defaultWaitMinutes: Int)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -60,6 +63,10 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
 
     override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int) {
         Notifications.showReminder(context, task, defaultWaitMinutes)
+    }
+
+    override fun showTestNotification(defaultWaitMinutes: Int) {
+        Notifications.showTestNotification(context, defaultWaitMinutes)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

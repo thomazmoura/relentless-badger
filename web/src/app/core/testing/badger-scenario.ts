@@ -140,6 +140,10 @@ export class BadgerScenario {
     return this.repository.onReminderFired(id);
   }
 
+  whenTestNotificationRequested(): Promise<void> {
+    return this.repository.showTestNotification();
+  }
+
   whenBootReArmRuns(): Promise<void> {
     return this.repository.reArmAlarms();
   }

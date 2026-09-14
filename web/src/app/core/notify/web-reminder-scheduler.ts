@@ -1,7 +1,7 @@
 import { signal } from '@angular/core';
 import { formatDuration } from '../domain/format';
 import { OpenTask } from '../domain/models';
-import { ReminderScheduler } from './reminder-scheduler';
+import { ReminderScheduler, TEST_NOTIFICATION_ID } from './reminder-scheduler';
 
 /**
  * The browser's stand-in for AlarmManager.
@@ -26,6 +26,7 @@ const LEADER_STALE_MILLIS = 10_000;
 /** Where a reminder is actually shown. Faked in tests. */
 export interface NotificationPresenter {
   show(task: OpenTask, defaultWaitMinutes: number): void;
+  showTest(defaultWaitMinutes: number): void;
   dismiss(taskId: string): void;
 }
 
@@ -78,6 +79,10 @@ export class WebReminderScheduler implements ReminderScheduler {
 
   showReminder(task: OpenTask, defaultWaitMinutes: number): void {
     this.presenter.show(task, defaultWaitMinutes);
+  }
+
+  showTestNotification(defaultWaitMinutes: number): void {
+    this.presenter.showTest(defaultWaitMinutes);
   }
 
   async requestPermission(): Promise<NotificationPermission> {
@@ -159,6 +164,24 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
   constructor(private readonly registration: () => Promise<ServiceWorkerRegistration | null>) {}
 
   show(task: OpenTask, defaultWaitMinutes: number): void {
+    this.post(task.id, task.title, defaultWaitMinutes);
+  }
+
+  /**
+   * The debug twin of [show]: same icon, insistence and buttons, so what lands
+   * on a paired watch is representative of a real nag. Its buttons resolve to
+   * nothing — App ignores actions carrying the test id, because there is no
+   * task behind them to complete.
+   */
+  showTest(defaultWaitMinutes: number): void {
+    this.post(
+      TEST_NOTIFICATION_ID,
+      'Test notification \u2014 reminders are working',
+      defaultWaitMinutes,
+    );
+  }
+
+  private post(taskId: string, body: string, defaultWaitMinutes: number): void {
     void this.registration().then((registration) => {
       if (
         !registration ||
@@ -168,10 +191,10 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
         return;
       }
       void registration.showNotification('RelentlessBadger', {
-        body: task.title,
-        tag: task.id,
+        body,
+        tag: taskId,
         requireInteraction: true,
-        data: { taskId: task.id, waitMinutes: defaultWaitMinutes },
+        data: { taskId, waitMinutes: defaultWaitMinutes },
         icon: 'icons/icon-192x192.png',
         badge: 'icons/icon-96x96.png',
         actions: [

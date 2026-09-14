@@ -322,6 +322,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    fun showTestNotification() {
+        launchBusy {
+            container.repository.showTestNotification()
+        }
+    }
+
     fun canScheduleExactAlarms(): Boolean = container.scheduler.canScheduleExact()
 
     private fun launchBusy(block: suspend () -> Unit) {

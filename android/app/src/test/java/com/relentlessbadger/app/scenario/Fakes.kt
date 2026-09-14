@@ -221,6 +221,9 @@ class RecordingReminderScheduler : ReminderScheduler {
     val dismissed = mutableListOf<String>()
     val shownReminders = mutableListOf<ShownReminder>()
 
+    /** The default wait carried by each test notification posted. */
+    val testNotifications = mutableListOf<Int>()
+
     data class ShownReminder(val task: OpenTaskEntity, val defaultWaitMinutes: Int)
 
     override fun canScheduleExact(): Boolean = true
@@ -240,6 +243,10 @@ class RecordingReminderScheduler : ReminderScheduler {
 
     override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int) {
         shownReminders += ShownReminder(task, defaultWaitMinutes)
+    }
+
+    override fun showTestNotification(defaultWaitMinutes: Int) {
+        testNotifications += defaultWaitMinutes
     }
 }
 

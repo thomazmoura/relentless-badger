@@ -330,6 +330,15 @@ fun SettingsScreen(
                 ) {
                     Text("Change server URL")
                 }
+
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = { viewModel.showTestNotification() },
+                    enabled = !viewModel.busy,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Send test notification")
+                }
             }
 
             viewModel.errorMessage?.let { message ->

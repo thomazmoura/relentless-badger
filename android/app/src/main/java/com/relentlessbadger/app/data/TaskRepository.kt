@@ -329,6 +329,19 @@ class TaskRepository(
     }
 
     /**
+     * Posts the debug notification from Advanced settings.
+     *
+     * Deliberately skips every gate [onReminderFired] respects — the pause,
+     * quiet hours, the minimum gap — because the user just asked for it and a
+     * button that silently does nothing teaches them nothing. For the same
+     * reason it leaves `lastNotificationAt` alone, so a test never pushes a
+     * real nag back.
+     */
+    suspend fun showTestNotification() {
+        scheduler.showTestNotification(settings.current().defaultWaitMinutes)
+    }
+
+    /**
      * Re-arms every open task's alarm after a reboot, an app update, or a change
      * to the notification pause. Fire times that passed meanwhile — while the
      * device was off, or while the app was silenced — are nudged one minute out,

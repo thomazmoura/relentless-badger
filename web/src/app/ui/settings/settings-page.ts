@@ -135,6 +135,14 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           >
             Change server URL
           </button>
+          <button
+            matButton="outlined"
+            class="full"
+            [disabled]="state.busy()"
+            (click)="state.showTestNotification()"
+          >
+            Send test notification
+          </button>
         }
       </div>
     </div>

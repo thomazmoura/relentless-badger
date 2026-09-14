@@ -289,6 +289,10 @@ export class AppState {
     await this.badger.reminders.requestPermission();
   }
 
+  async showTestNotification(): Promise<void> {
+    await this.repository.showTestNotification();
+  }
+
   private resetTaskList(): void {
     this.taskListResetToken.update((token) => token + 1);
   }

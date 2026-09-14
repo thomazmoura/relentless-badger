@@ -139,6 +139,8 @@ class BadgerScenario {
 
     suspend fun whenReminderFires(id: String) = repository.onReminderFired(id)
 
+    suspend fun whenTestNotificationRequested() = repository.showTestNotification()
+
     suspend fun whenNotificationsPaused(minutes: Int) = repository.pauseNotifications(minutes)
 
     suspend fun whenNotificationsPausedUntil(atMillis: Long) =

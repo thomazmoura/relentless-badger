@@ -258,6 +258,8 @@ export class RecordingReminderScheduler implements ReminderScheduler {
   readonly cancelled: string[] = [];
   readonly dismissed: string[] = [];
   readonly shownReminders: ShownReminder[] = [];
+  /** The default wait carried by each test notification posted. */
+  readonly testNotifications: number[] = [];
 
   schedule(task: OpenTask): void {
     this.scheduled.set(task.id, task.nextFireAtMillis);
@@ -274,6 +276,10 @@ export class RecordingReminderScheduler implements ReminderScheduler {
 
   showReminder(task: OpenTask, defaultWaitMinutes: number): void {
     this.shownReminders.push({ task, defaultWaitMinutes });
+  }
+
+  showTestNotification(defaultWaitMinutes: number): void {
+    this.testNotifications.push(defaultWaitMinutes);
   }
 }
 

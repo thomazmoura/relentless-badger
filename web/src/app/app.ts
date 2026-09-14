@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppState } from './core/app-state';
+import { TEST_NOTIFICATION_ID } from './core/notify/reminder-scheduler';
 import {
   listenForNotificationActions,
   NotificationAction,
@@ -27,6 +28,9 @@ export class App {
   }
 
   private async apply(action: NotificationAction): Promise<void> {
+    // The test notification from Advanced settings has no task behind it; its
+    // buttons exist to look like a real reminder, not to do anything.
+    if (action.taskId === TEST_NOTIFICATION_ID) return;
     switch (action.action) {
       case 'done':
         await this.state.completeTask(action.taskId);

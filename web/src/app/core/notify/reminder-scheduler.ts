@@ -11,4 +11,14 @@ export interface ReminderScheduler {
   cancel(taskId: string): void;
   dismissNotification(taskId: string): void;
   showReminder(task: OpenTask, defaultWaitMinutes: number): void;
+
+  /** Posts the reminder-shaped notification behind the Advanced settings button. */
+  showTestNotification(defaultWaitMinutes: number): void;
 }
+
+/**
+ * Stands in for a task id on the notification fired by the Advanced settings
+ * button. No task ever carries it, which is the point: it keeps the test
+ * notification out of every taskId-keyed path.
+ */
+export const TEST_NOTIFICATION_ID = 'badger-test-notification';

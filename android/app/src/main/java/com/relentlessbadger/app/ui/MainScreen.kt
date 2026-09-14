@@ -4,6 +4,8 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.text.format.DateFormat
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -66,6 +69,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -123,11 +127,7 @@ fun MainScreen(
     val pauseUntilMillis = session?.pauseUntilMillis?.takeIf { it > nowMillis }
     val quietHours = session?.quietHours.orEmpty()
     var pausePickerOpen by remember { mutableStateOf(false) }
-    // Which task's snooze menu is open. Held here, by id, rather than inside the
-    // row: the rows are unkeyed so that the list doesn't scroll when tasks move,
-    // which means row-local state belongs to the position, not the task — an open
-    // menu would end up snoozing whatever task slid into that slot.
-    var openMenuTaskId by remember { mutableStateOf<String?>(null) }
+    val movementGuard = remember { RowMovementGuard() }
 
     LaunchedEffect(Unit) {
         requestNotificationPermission()
@@ -226,16 +226,33 @@ fun MainScreen(
 
             Spacer(Modifier.height(8.dp))
 
-            // The rows below are deliberately unkeyed. LazyColumn anchors its
-            // scroll on the first visible item's key, so keyed rows make the
-            // viewport chase whichever row moved — and rows move on their own, as
-            // a fired nag or a sync rewrites the next fire time the list sorts by.
-            // Unkeyed, the viewport holds its position instead: whoever is two rows
-            // down stays two rows down. Hoisted above the empty branch so emptying
-            // and refilling the list doesn't lose the state.
+            // Hoisted above the empty branch so emptying and refilling the list
+            // doesn't lose the state.
             val listState = rememberLazyListState()
             LaunchedEffect(viewModel.taskListResetToken) {
                 if (viewModel.taskListResetToken > 0) listState.animateScrollToItem(0)
+            }
+
+            // Keyed on the start time, not nextFire, so a snoozed task
+            // doesn't jump into "Scheduled".
+            val (scheduled, active) = tasks.partition {
+                (it.firstWarningAtMillis ?: 0L) > nowMillis
+            }
+            val keys = rowKeys(active.map { it.id }, scheduled.map { it.id })
+            // Rows are keyed so they can slide to their new slot, but LazyColumn
+            // anchors its scroll on the first visible item's key — the viewport
+            // would chase whichever row moved, and rows move on their own as a
+            // fired nag or a sync rewrites the time the list sorts by. Pinning the
+            // current index before the new rows are measured holds the viewport
+            // instead: whoever is two rows down stays two rows down. A scroll in
+            // flight is left alone, since that is the add-task jump to the top.
+            SideEffect {
+                if (movementGuard.observe(keys) && !listState.isScrollInProgress) {
+                    listState.requestScrollToItem(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset,
+                    )
+                }
             }
 
             if (tasks.isEmpty()) {
@@ -251,66 +268,59 @@ fun MainScreen(
                     )
                 }
             } else {
-                // Keyed on the start time, not nextFire, so a snoozed task
-                // doesn't jump into "Scheduled".
-                val (scheduled, active) = tasks.partition {
-                    (it.firstWarningAtMillis ?: 0L) > nowMillis
-                }
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(active) { task ->
-                        TaskRow(
-                            task = task,
-                            scheduled = false,
-                            nowMillis = nowMillis,
-                            pauseUntilMillis = pauseUntilMillis,
-                            quietHours = quietHours,
-                            use24Hour = use24Hour,
-                            waitMinutes = waitMinutes,
-                            menuExpanded = openMenuTaskId == task.id,
-                            onMenuExpandedChange = { expanded ->
-                                openMenuTaskId = task.id.takeIf { expanded }
-                            },
-                            onDone = { viewModel.completeTask(task.id) },
-                            onDonePreviously = { viewModel.donePreviouslyTask = task },
-                            onCancel = { viewModel.cancelTask(task.id) },
-                            onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
-                            onPickDateTime = { viewModel.exactWaitTask = task },
-                            onAdvance = {},
-                            onEdit = { viewModel.beginEditSchedule(task) },
-                        )
-                        HorizontalDivider()
-                    }
-                    if (scheduled.isNotEmpty()) {
-                        item {
-                            Text(
-                                "Scheduled",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-                            )
-                        }
-                        items(scheduled) { task ->
+                    items(active, key = { it.id }) { task ->
+                        Column(rowAnimation()) {
                             TaskRow(
                                 task = task,
-                                scheduled = true,
+                                scheduled = false,
                                 nowMillis = nowMillis,
                                 pauseUntilMillis = pauseUntilMillis,
                                 quietHours = quietHours,
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
-                                menuExpanded = openMenuTaskId == task.id,
-                                onMenuExpandedChange = { expanded ->
-                                    openMenuTaskId = task.id.takeIf { expanded }
-                                },
+                                canAct = movementGuard::allowsTap,
                                 onDone = { viewModel.completeTask(task.id) },
                                 onDonePreviously = { viewModel.donePreviouslyTask = task },
                                 onCancel = { viewModel.cancelTask(task.id) },
                                 onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
                                 onPickDateTime = { viewModel.exactWaitTask = task },
-                                onAdvance = { viewModel.advanceTask(task.id) },
+                                onAdvance = {},
                                 onEdit = { viewModel.beginEditSchedule(task) },
                             )
                             HorizontalDivider()
+                        }
+                    }
+                    if (scheduled.isNotEmpty()) {
+                        item(key = SCHEDULED_HEADER_KEY) {
+                            Text(
+                                "Scheduled",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = rowAnimation().padding(top = 16.dp, bottom = 4.dp),
+                            )
+                        }
+                        items(scheduled, key = { it.id }) { task ->
+                            Column(rowAnimation()) {
+                                TaskRow(
+                                    task = task,
+                                    scheduled = true,
+                                    nowMillis = nowMillis,
+                                    pauseUntilMillis = pauseUntilMillis,
+                                    quietHours = quietHours,
+                                    use24Hour = use24Hour,
+                                    waitMinutes = waitMinutes,
+                                    canAct = movementGuard::allowsTap,
+                                    onDone = { viewModel.completeTask(task.id) },
+                                    onDonePreviously = { viewModel.donePreviouslyTask = task },
+                                    onCancel = { viewModel.cancelTask(task.id) },
+                                    onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                                    onPickDateTime = { viewModel.exactWaitTask = task },
+                                    onAdvance = { viewModel.advanceTask(task.id) },
+                                    onEdit = { viewModel.beginEditSchedule(task) },
+                                )
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -756,6 +766,17 @@ internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
         .format(if (use24Hour) dateTimeFormatter24 else dateTimeFormatter12)
 
+/**
+ * How a list row travels when the order changes: it slides from its old slot to
+ * its new one, so the eye can follow it. New rows fade in; removed rows don't
+ * linger, so their neighbours visibly close the gap.
+ */
+private fun LazyItemScope.rowAnimation(): Modifier = Modifier.animateItem(
+    fadeInSpec = tween(ROW_MOVE_ANIMATION_MILLIS),
+    placementSpec = tween(ROW_MOVE_ANIMATION_MILLIS, easing = FastOutSlowInEasing),
+    fadeOutSpec = null,
+)
+
 @Composable
 private fun TaskRow(
     task: OpenTaskEntity,
@@ -768,18 +789,20 @@ private fun TaskRow(
     onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
     waitMinutes: List<Int>,
-    menuExpanded: Boolean,
-    onMenuExpandedChange: (Boolean) -> Unit,
+    canAct: () -> Boolean,
     onSnooze: (Int) -> Unit,
     onPickDateTime: () -> Unit,
     onAdvance: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    // Everything on the row's face is gated by [canAct], asked at the moment of
+    // the tap: while rows are sliding, the task under the finger may not be the
+    // one the user aimed at. The menus aren't — they already belong to a task.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onEdit)
+            .clickable { if (canAct()) onEdit() }
             .padding(vertical = 8.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -817,22 +840,20 @@ private fun TaskRow(
 
         // Snoozing a task that hasn't started nagging is meaningless.
         if (!scheduled) {
+            var menuExpanded by remember { mutableStateOf(false) }
             Box {
-                IconButton(onClick = { onMenuExpandedChange(true) }) {
+                IconButton(onClick = { if (canAct()) menuExpanded = true }) {
                     Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
                 }
                 // Anchored to the button so the options appear where the user is
                 // already looking.
-                DropdownMenu(
-                    expanded = menuExpanded,
-                    onDismissRequest = { onMenuExpandedChange(false) },
-                ) {
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     waitMinutes.forEach { minutes ->
                         DropdownMenuItem(
                             text = { Text("Wait ${formatDuration(minutes)}") },
                             leadingIcon = { Icon(Icons.Filled.Snooze, contentDescription = null) },
                             onClick = {
-                                onMenuExpandedChange(false)
+                                menuExpanded = false
                                 onSnooze(minutes)
                             },
                         )
@@ -842,7 +863,7 @@ private fun TaskRow(
                         text = { Text("Pick a date & time…") },
                         leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                         onClick = {
-                            onMenuExpandedChange(false)
+                            menuExpanded = false
                             onPickDateTime()
                         },
                     )
@@ -851,12 +872,17 @@ private fun TaskRow(
         } else {
             // The snooze slot, mirrored: a scheduled task can't be pushed later
             // from here, but it can be pulled to now.
-            IconButton(onClick = onAdvance) {
+            IconButton(onClick = { if (canAct()) onAdvance() }) {
                 Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
             }
         }
 
-        DoneButton(onDone = onDone, onDonePreviously = onDonePreviously, onCancel = onCancel)
+        DoneButton(
+            canAct = canAct,
+            onDone = onDone,
+            onDonePreviously = onDonePreviously,
+            onCancel = onCancel,
+        )
     }
 }
 
@@ -870,6 +896,7 @@ private fun TaskRow(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DoneButton(
+    canAct: () -> Boolean,
     onDone: () -> Unit,
     onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
@@ -886,8 +913,8 @@ private fun DoneButton(
                     role = Role.Button,
                     onClickLabel = "Mark done",
                     onLongClickLabel = "Other ways to close this task",
-                    onClick = onDone,
-                    onLongClick = { menuOpen = true },
+                    onClick = { if (canAct()) onDone() },
+                    onLongClick = { if (canAct()) menuOpen = true },
                 ),
             contentAlignment = Alignment.Center,
         ) {

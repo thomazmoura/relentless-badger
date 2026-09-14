@@ -1,6 +1,13 @@
 import { Signal } from '@angular/core';
 import { ApiError, NetworkError } from '../domain/errors';
-import { CompletedTask, OpenTask, Recurrence, SettingsDto, taskRecurrence } from '../domain/models';
+import {
+  CompletedTask,
+  defaultWaitMinutes,
+  OpenTask,
+  Recurrence,
+  SettingsDto,
+  taskRecurrence,
+} from '../domain/models';
 import { computeNextFire, computeNextOccurrence, MINUTE_MILLIS } from '../domain/schedule';
 import { parseIsoInstant, toIsoInstant } from '../domain/time';
 import { nameUuidFromBytes, randomUuid } from '../domain/uuid';
@@ -311,6 +318,17 @@ export class TaskRepository {
     };
     await this.dao.upsert(next);
     this.scheduler.schedule(next);
+  }
+
+  /**
+   * Posts the debug notification from Advanced settings.
+   *
+   * It is a delivery check, not a nag: nothing is armed, no task is touched and
+   * no reminder is recorded as sent, so pressing it can never disturb the
+   * schedule.
+   */
+  async showTestNotification(): Promise<void> {
+    this.scheduler.showTestNotification(defaultWaitMinutes(await this.settings.current()));
   }
 
   /**

@@ -20,6 +20,13 @@ object Notifications {
     /** Tells MainActivity to open the wait picker for [EXTRA_TASK_ID] on launch. */
     const val EXTRA_SHOW_WAIT_PICKER = "showWaitPicker"
 
+    /**
+     * Stands in for a task id on the notification fired by the Advanced
+     * settings button. No task ever carries it, which is the point: it keeps
+     * the test notification out of every taskId-keyed path.
+     */
+    const val TEST_NOTIFICATION_ID = "badger-test-notification"
+
     fun ensureChannel(context: Context) {
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -82,6 +89,48 @@ object Notifications {
 
         try {
             NotificationManagerCompat.from(context).notify(task.id.hashCode(), notification)
+        } catch (_: SecurityException) {
+            // POST_NOTIFICATIONS revoked mid-flight; nothing else to do.
+        }
+    }
+
+    /**
+     * The debug twin of [showReminder]: same channel, icon, priority and action
+     * buttons, so what lands on the watch is representative of a real nag. The
+     * buttons only dismiss it — there is no task behind them to complete.
+     */
+    fun showTestNotification(context: Context, defaultWaitMinutes: Int) {
+        if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+
+        val dismiss = PendingIntent.getBroadcast(
+            context,
+            TEST_NOTIFICATION_ID.hashCode(),
+            Intent(context, TestNotificationReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(context.getString(R.string.app_name))
+            .setContentText("Test notification \u2014 reminders are working")
+            .setContentIntent(dismiss)
+            .setAutoCancel(true)
+            .addAction(
+                0,
+                context.getString(
+                    R.string.notification_action_wait,
+                    formatDuration(defaultWaitMinutes),
+                ),
+                dismiss,
+            )
+            .addAction(0, context.getString(R.string.notification_action_other), dismiss)
+            .addAction(0, context.getString(R.string.notification_action_done), dismiss)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .build()
+
+        try {
+            NotificationManagerCompat.from(context).notify(TEST_NOTIFICATION_ID.hashCode(), notification)
         } catch (_: SecurityException) {
             // POST_NOTIFICATIONS revoked mid-flight; nothing else to do.
         }
