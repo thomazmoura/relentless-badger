@@ -8,6 +8,15 @@ export const ROW_MOVE_ANIMATION_MILLIS = 300;
  */
 export const ROW_MOVE_COOLDOWN_MILLIS = 600;
 
+/**
+ * How faint a row's buttons go while taps are locked — Material's disabled
+ * alpha, so the lock reads as "not now" rather than as something new.
+ */
+export const ROW_LOCKED_BUTTON_ALPHA = 0.38;
+
+/** How long the buttons take to fade in and out of the locked look. */
+export const ROW_LOCK_FADE_MILLIS = 150;
+
 /** The "Scheduled" section header's slot in the row sequence. */
 export const SCHEDULED_HEADER_KEY = 'scheduled-header';
 
@@ -46,8 +55,17 @@ export class RowMovementGuard {
   }
 
   allowsTap(): boolean {
-    if (this.movedAtMillis === null) return true;
-    return this.clock() - this.movedAtMillis >= ROW_MOVE_COOLDOWN_MILLIS;
+    return this.tapLockRemainingMillis() === 0;
+  }
+
+  /**
+   * How long until taps count again, 0 once they do. The UI waits on this
+   * rather than a fixed cooldown to drop its locked look, because a further
+   * move while locked pushes the end back.
+   */
+  tapLockRemainingMillis(): number {
+    if (this.movedAtMillis === null) return 0;
+    return Math.max(0, ROW_MOVE_COOLDOWN_MILLIS - (this.clock() - this.movedAtMillis));
   }
 }
 

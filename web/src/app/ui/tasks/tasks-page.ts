@@ -8,6 +8,7 @@ import {
   computed,
   effect,
   inject,
+  signal,
   viewChild,
 } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
@@ -112,6 +113,7 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
                   [nowMillis]="state.nowMillis()"
                   [use24Hour]="use24Hour"
                   [waitMinutes]="state.session().waitMinutes"
+                  [tapsLocked]="tapsLocked()"
                   (edit)="editSchedule(task)"
                   (done)="state.completeTask(task.id)"
                   (donePreviously)="donePreviously(task)"
@@ -131,6 +133,7 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
                     [nowMillis]="state.nowMillis()"
                     [use24Hour]="use24Hour"
                     [waitMinutes]="state.session().waitMinutes"
+                    [tapsLocked]="tapsLocked()"
                     (edit)="editSchedule(task)"
                     (done)="state.completeTask(task.id)"
                     (donePreviously)="donePreviously(task)"
@@ -204,6 +207,12 @@ export class TasksPage {
   private readonly body = viewChild.required<ElementRef<HTMLElement>>('body');
 
   private readonly movementGuard = new RowMovementGuard();
+  /**
+   * Mirrors the guard's lock for drawing. The taps themselves still ask the
+   * guard, since this only catches up a render after the rows move.
+   */
+  readonly tapsLocked = signal(false);
+  private tapLockRelease: ReturnType<typeof setTimeout> | null = null;
   /** Each row's offset in the list as of the last render, by row key. */
   private rowOffsets = new Map<string, number>();
 
@@ -263,6 +272,10 @@ export class TasksPage {
       );
       const changed = this.movementGuard.observe(keys);
       this.measureRows(changed);
+      if (changed && !this.movementGuard.allowsTap()) this.holdTapLock();
+    });
+    this.destroyRef.onDestroy(() => {
+      if (this.tapLockRelease !== null) clearTimeout(this.tapLockRelease);
     });
 
     // Swallows taps on a row while the rows are still moving: the task under
@@ -284,6 +297,19 @@ export class TasksPage {
         for (const type of ROW_TAP_EVENTS) body.removeEventListener(type, swallow, { capture: true });
       });
     });
+  }
+
+  /**
+   * Keeps the locked look on until the guard lets taps through again. Re-asks
+   * the guard after each wait, because a further move while locked pushes the
+   * end back.
+   */
+  private holdTapLock(): void {
+    if (this.tapLockRelease !== null) clearTimeout(this.tapLockRelease);
+    this.tapLockRelease = null;
+    const remaining = this.movementGuard.tapLockRemainingMillis();
+    this.tapsLocked.set(remaining > 0);
+    if (remaining > 0) this.tapLockRelease = setTimeout(() => this.holdTapLock(), remaining);
   }
 
   /**

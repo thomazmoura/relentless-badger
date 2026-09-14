@@ -12,6 +12,15 @@ const val ROW_MOVE_ANIMATION_MILLIS = 300
  */
 const val ROW_MOVE_COOLDOWN_MILLIS = 600L
 
+/**
+ * How faint a row's buttons go while taps are locked — Material's disabled
+ * alpha, so the lock reads as "not now" rather than as something new.
+ */
+const val ROW_LOCKED_BUTTON_ALPHA = 0.38f
+
+/** How long the buttons take to fade in and out of the locked look. */
+const val ROW_LOCK_FADE_MILLIS = 150
+
 /** The "Scheduled" section header's slot in the row sequence. */
 const val SCHEDULED_HEADER_KEY = "scheduled-header"
 
@@ -44,9 +53,16 @@ class RowMovementGuard(private val clock: () -> Long = SystemClock::uptimeMillis
         return true
     }
 
-    fun allowsTap(): Boolean {
-        val movedAt = movedAtMillis ?: return true
-        return clock() - movedAt >= ROW_MOVE_COOLDOWN_MILLIS
+    fun allowsTap(): Boolean = tapLockRemainingMillis() == 0L
+
+    /**
+     * How long until taps count again, 0 once they do. The UI waits on this
+     * rather than a fixed cooldown to drop its locked look, because a further
+     * move while locked pushes the end back.
+     */
+    fun tapLockRemainingMillis(): Long {
+        val movedAt = movedAtMillis ?: return 0L
+        return (ROW_MOVE_COOLDOWN_MILLIS - (clock() - movedAt)).coerceAtLeast(0L)
     }
 }
 

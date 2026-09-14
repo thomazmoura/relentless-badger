@@ -5,8 +5,10 @@ import android.os.Build
 import android.provider.Settings
 import android.text.format.DateFormat
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -56,6 +58,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -68,6 +71,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -79,6 +83,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -128,6 +133,9 @@ fun MainScreen(
     val quietHours = session?.quietHours.orEmpty()
     var pausePickerOpen by remember { mutableStateOf(false) }
     val movementGuard = remember { RowMovementGuard() }
+    // Mirrors the guard's lock for drawing. The taps themselves still ask the
+    // guard, since this only catches up a frame after the rows move.
+    var tapsLocked by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         requestNotificationPermission()
@@ -247,12 +255,26 @@ fun MainScreen(
             // instead: whoever is two rows down stays two rows down. A scroll in
             // flight is left alone, since that is the add-task jump to the top.
             SideEffect {
-                if (movementGuard.observe(keys) && !listState.isScrollInProgress) {
+                if (!movementGuard.observe(keys)) return@SideEffect
+                if (!listState.isScrollInProgress) {
                     listState.requestScrollToItem(
                         listState.firstVisibleItemIndex,
                         listState.firstVisibleItemScrollOffset,
                     )
                 }
+                if (!movementGuard.allowsTap()) tapsLocked = true
+            }
+            // Lifts the locked look when the guard lets taps through again.
+            // Re-asks the guard after each wait, because a further move while
+            // locked pushes the end back.
+            LaunchedEffect(tapsLocked) {
+                if (!tapsLocked) return@LaunchedEffect
+                while (true) {
+                    val remaining = movementGuard.tapLockRemainingMillis()
+                    if (remaining == 0L) break
+                    delay(remaining)
+                }
+                tapsLocked = false
             }
 
             if (tasks.isEmpty()) {
@@ -280,6 +302,7 @@ fun MainScreen(
                                 use24Hour = use24Hour,
                                 waitMinutes = waitMinutes,
                                 canAct = movementGuard::allowsTap,
+                                tapsLocked = tapsLocked,
                                 onDone = { viewModel.completeTask(task.id) },
                                 onDonePreviously = { viewModel.donePreviouslyTask = task },
                                 onCancel = { viewModel.cancelTask(task.id) },
@@ -311,6 +334,7 @@ fun MainScreen(
                                     use24Hour = use24Hour,
                                     waitMinutes = waitMinutes,
                                     canAct = movementGuard::allowsTap,
+                                    tapsLocked = tapsLocked,
                                     onDone = { viewModel.completeTask(task.id) },
                                     onDonePreviously = { viewModel.donePreviouslyTask = task },
                                     onCancel = { viewModel.cancelTask(task.id) },
@@ -790,19 +814,34 @@ private fun TaskRow(
     onCancel: () -> Unit,
     waitMinutes: List<Int>,
     canAct: () -> Boolean,
+    tapsLocked: Boolean,
     onSnooze: (Int) -> Unit,
     onPickDateTime: () -> Unit,
     onAdvance: () -> Unit,
     onEdit: () -> Unit,
 ) {
+    // While [tapsLocked], a press shows no ripple and the buttons fade, so a tap
+    // the guard swallows looks like it never landed rather than like it worked.
+    // Only the buttons fade: dimming the whole row would flash the task text on
+    // every reorder, even when nobody is tapping.
+    val buttonAlpha by animateFloatAsState(
+        targetValue = if (tapsLocked) ROW_LOCKED_BUTTON_ALPHA else 1f,
+        animationSpec = tween(ROW_LOCK_FADE_MILLIS),
+        label = "rowButtonAlpha",
+    )
+    val buttonFade = Modifier.graphicsLayer { alpha = buttonAlpha }
     // Everything on the row's face is gated by [canAct], asked at the moment of
     // the tap: while rows are sliding, the task under the finger may not be the
-    // one the user aimed at. The menus aren't — they already belong to a task.
+    // one the user aimed at. The menus aren't — they already belong to a task,
+    // so they keep their ripple too.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { if (canAct()) onEdit() }
+            .clickable(
+                interactionSource = null,
+                indication = if (tapsLocked) null else LocalIndication.current,
+            ) { if (canAct()) onEdit() }
             .padding(vertical = 8.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -842,8 +881,10 @@ private fun TaskRow(
         if (!scheduled) {
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
-                IconButton(onClick = { if (canAct()) menuExpanded = true }) {
-                    Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
+                NoRippleWhile(tapsLocked) {
+                    IconButton(onClick = { if (canAct()) menuExpanded = true }, modifier = buttonFade) {
+                        Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
+                    }
                 }
                 // Anchored to the button so the options appear where the user is
                 // already looking.
@@ -872,18 +913,32 @@ private fun TaskRow(
         } else {
             // The snooze slot, mirrored: a scheduled task can't be pushed later
             // from here, but it can be pulled to now.
-            IconButton(onClick = { if (canAct()) onAdvance() }) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
+            NoRippleWhile(tapsLocked) {
+                IconButton(onClick = { if (canAct()) onAdvance() }, modifier = buttonFade) {
+                    Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
+                }
             }
         }
 
         DoneButton(
             canAct = canAct,
+            tapsLocked = tapsLocked,
+            modifier = buttonFade,
             onDone = onDone,
             onDonePreviously = onDonePreviously,
             onCancel = onCancel,
         )
     }
+}
+
+/** Drops the press ripple from [content] while [locked]; see [TaskRow]. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoRippleWhile(locked: Boolean, content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalRippleConfiguration provides if (locked) null else LocalRippleConfiguration.current,
+        content = content,
+    )
 }
 
 /**
@@ -897,19 +952,23 @@ private fun TaskRow(
 @Composable
 private fun DoneButton(
     canAct: () -> Boolean,
+    tapsLocked: Boolean,
     onDone: () -> Unit,
     onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
 
     Box {
         Box(
-            modifier = Modifier
+            modifier = modifier
                 .size(40.dp)
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.secondaryContainer)
                 .combinedClickable(
+                    interactionSource = null,
+                    indication = if (tapsLocked) null else LocalIndication.current,
                     role = Role.Button,
                     onClickLabel = "Mark done",
                     onLongClickLabel = "Other ways to close this task",

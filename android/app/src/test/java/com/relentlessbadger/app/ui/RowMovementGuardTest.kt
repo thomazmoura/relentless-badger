@@ -82,6 +82,30 @@ class RowMovementGuardTest {
     }
 
     @Test
+    fun `the remaining lock counts down to zero and no further`() {
+        assertEquals(0L, guard.tapLockRemainingMillis())
+        guard.observe(listOf("a", "b"))
+        guard.observe(listOf("b", "a"))
+
+        now += 200
+
+        assertEquals(ROW_MOVE_COOLDOWN_MILLIS - 200, guard.tapLockRemainingMillis())
+        now += ROW_MOVE_COOLDOWN_MILLIS
+        assertEquals(0L, guard.tapLockRemainingMillis())
+    }
+
+    @Test
+    fun `a move during the cooldown pushes the remaining lock back`() {
+        guard.observe(listOf("a", "b", "c"))
+        guard.observe(listOf("b", "a", "c"))
+        now += ROW_MOVE_COOLDOWN_MILLIS - 100
+
+        guard.observe(listOf("b", "c", "a"))
+
+        assertEquals(ROW_MOVE_COOLDOWN_MILLIS, guard.tapLockRemainingMillis())
+    }
+
+    @Test
     fun `a task starting moves across the scheduled header`() {
         val before = rowKeys(listOf("a"), listOf("s1", "s2"))
         val after = rowKeys(listOf("a", "s1"), listOf("s2"))

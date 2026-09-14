@@ -9,6 +9,7 @@ import {
   relativeFuture,
 } from '../../core/domain/format';
 import { OpenTask, taskRecurrence } from '../../core/domain/models';
+import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-guard';
 
 /**
  * One task. The whole row opens the schedule editor; the snooze menu is
@@ -22,7 +23,7 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
   imports: [MatButtonModule, MatIconModule, MatMenuModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="row" (click)="edit.emit()">
+    <div class="row" [class.taps-locked]="tapsLocked()" (click)="edit.emit()">
       <div class="text">
         <span class="title">{{ task().title }}</span>
         <span class="subtitle">{{ subtitle() }}</span>
@@ -35,6 +36,7 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
         <button
           matIconButton
           aria-label="Snooze"
+          [disableRipple]="tapsLocked()"
           [matMenuTriggerFor]="snoozeMenu"
           (click)="$event.stopPropagation()"
         >
@@ -58,6 +60,7 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
         <button
           matIconButton
           aria-label="Start nagging now"
+          [disableRipple]="tapsLocked()"
           (click)="$event.stopPropagation(); advance.emit()"
         >
           <mat-icon>play_arrow</mat-icon>
@@ -119,6 +122,16 @@ import { OpenTask, taskRecurrence } from '../../core/domain/models';
       font: var(--mat-sys-body-small);
       color: var(--mat-sys-primary);
     }
+    // While taps are locked the buttons fade to Material's disabled alpha, so
+    // a tap the list swallows looks like it never landed rather than like it
+    // worked. Only the buttons: dimming the whole row would flash the task text
+    // on every reorder, even when nobody is tapping.
+    .row > button {
+      transition: opacity ${ROW_LOCK_FADE_MILLIS}ms linear;
+    }
+    .row.taps-locked > button {
+      opacity: ${ROW_LOCKED_BUTTON_ALPHA};
+    }
     .done {
       flex: none;
       width: 40px;
@@ -140,6 +153,8 @@ export class TaskRow {
   readonly nowMillis = input.required<number>();
   readonly use24Hour = input(false);
   readonly waitMinutes = input.required<readonly number[]>();
+  /** Rows just moved and taps on this one are being swallowed; see TasksPage. */
+  readonly tapsLocked = input(false);
 
   readonly edit = output<void>();
   readonly done = output<void>();

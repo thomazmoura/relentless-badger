@@ -79,6 +79,28 @@ describe('RowMovementGuard', () => {
     expect(guard.allowsTap()).toBe(true);
   });
 
+  it('the remaining lock counts down to zero and no further', () => {
+    expect(guard.tapLockRemainingMillis()).toBe(0);
+    guard.observe(['a', 'b']);
+    guard.observe(['b', 'a']);
+
+    now += 200;
+
+    expect(guard.tapLockRemainingMillis()).toBe(ROW_MOVE_COOLDOWN_MILLIS - 200);
+    now += ROW_MOVE_COOLDOWN_MILLIS;
+    expect(guard.tapLockRemainingMillis()).toBe(0);
+  });
+
+  it('a move during the cooldown pushes the remaining lock back', () => {
+    guard.observe(['a', 'b', 'c']);
+    guard.observe(['b', 'a', 'c']);
+    now += ROW_MOVE_COOLDOWN_MILLIS - 100;
+
+    guard.observe(['b', 'c', 'a']);
+
+    expect(guard.tapLockRemainingMillis()).toBe(ROW_MOVE_COOLDOWN_MILLIS);
+  });
+
   it('a task starting moves across the scheduled header', () => {
     const before = rowKeys(['a'], ['s1', 's2']);
     const after = rowKeys(['a', 's1'], ['s2']);
