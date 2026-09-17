@@ -5,7 +5,14 @@ import { GoogleAuthService } from './auth/google-auth.service';
 import { buildMonthEntries, CalendarEntry } from './domain/calendar-entries';
 import { friendlyMessage } from './domain/errors';
 import { rank } from './domain/fuzzy';
-import { CompletedTask, isSignedIn, OpenTask, Recurrence, SettingsDto } from './domain/models';
+import {
+  CompletedTask,
+  ConcludedTask,
+  isSignedIn,
+  OpenTask,
+  Recurrence,
+  SettingsDto,
+} from './domain/models';
 import {
   atDay,
   dateAt,
@@ -70,7 +77,10 @@ export class AppState {
   readonly quickAddFirstWarningAtMillis = signal<number | null>(null);
   readonly quickAddRecurrence = signal<Recurrence | null>(null);
   readonly titleHistory = signal<string[]>([]);
+  /** Title just removed from suggestions, awaiting its undo snackbar. */
   readonly dismissedSuggestion = signal<string | null>(null);
+  /** Task just concluded, awaiting its undo snackbar. */
+  readonly concludedTask = signal<ConcludedTask | null>(null);
 
   readonly suggestions = computed(() => {
     const query = this.quickAddText();
@@ -197,12 +207,32 @@ export class AppState {
 
   /** `atMillis` closes the task as done at an earlier moment; undefined means now. */
   async completeTask(id: string, atMillis?: number): Promise<void> {
-    await this.runBusy(() => this.repository.completeTask(id, atMillis));
+    await this.runBusy(async () => {
+      this.concludedTask.set(await this.repository.completeTask(id, atMillis));
+    });
     this.resetTaskList();
   }
 
   async cancelTask(id: string): Promise<void> {
-    await this.runBusy(() => this.repository.cancelTask(id));
+    await this.runBusy(async () => {
+      this.concludedTask.set(await this.repository.cancelTask(id));
+    });
+    this.resetTaskList();
+  }
+
+  /**
+   * Concluding from a notification has no screen to offer the undo on, so it
+   * takes the plain path — the Android receiver does the same.
+   */
+  async completeTaskFromReminder(id: string): Promise<void> {
+    await this.runBusy(async () => {
+      await this.repository.completeTask(id);
+    });
+    this.resetTaskList();
+  }
+
+  async undoConclusion(concluded: ConcludedTask): Promise<void> {
+    await this.runBusy(() => this.repository.undoConclusion(concluded));
     this.resetTaskList();
   }
 

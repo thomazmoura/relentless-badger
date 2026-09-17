@@ -48,6 +48,8 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
 
     val receivedCreates = mutableListOf<CreateTaskRequest>()
     val receivedCompletions = mutableListOf<String>()
+    val receivedReopens = mutableListOf<String>()
+    val receivedDeletes = mutableListOf<String>()
     val receivedSettingsPuts = mutableListOf<SettingsDto>()
     val receivedScheduleUpdates = mutableListOf<Pair<String, UpdateTaskScheduleRequest>>()
 
@@ -187,8 +189,23 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
         return done
     }
 
-    override suspend fun deleteTask(id: String): Response<Unit> =
-        throw UnsupportedOperationException("not exercised by repository scenarios")
+    override suspend fun reopenTask(id: String): TaskDto {
+        gate()
+        val task = tasks[id] ?: throw httpError(404)
+        receivedReopens += id
+        // Mirrors the server: the close is undone, and reopening an open task
+        // is a no-op rather than an error.
+        val reopened = task.copy(completedAt = null, cancelled = false)
+        tasks[id] = reopened
+        return reopened
+    }
+
+    override suspend fun deleteTask(id: String): Response<Unit> {
+        gate()
+        if (tasks.remove(id) == null) return Response.error(404, "".toResponseBody(null))
+        receivedDeletes += id
+        return Response.success(Unit)
+    }
 
     override suspend fun getTitles(): List<String> {
         gate()

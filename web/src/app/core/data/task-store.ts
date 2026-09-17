@@ -16,12 +16,12 @@ const MAX_RANKED_TITLES = 500;
 export class OpenTaskStore {
   constructor(private readonly store: BadgerStore) {}
 
-  /** WHERE pendingDone = 0 ORDER BY nextFireAtMillis ASC, createdAtMillis DESC */
+  /** WHERE pendingDone = 0 AND pendingDelete = 0 ORDER BY nextFireAtMillis ASC, createdAtMillis DESC */
   observeActive(): Signal<OpenTask[]> {
     return computed(() =>
       this.store
         .openTasks()
-        .filter((task) => !task.pendingDone)
+        .filter((task) => !task.pendingDone && !task.pendingDelete)
         .sort(
           (a, b) =>
             a.nextFireAtMillis - b.nextFireAtMillis || b.createdAtMillis - a.createdAtMillis,
@@ -30,7 +30,9 @@ export class OpenTaskStore {
   }
 
   async getActive(): Promise<OpenTask[]> {
-    return [...this.store.openTaskMap().values()].filter((task) => !task.pendingDone);
+    return [...this.store.openTaskMap().values()].filter(
+      (task) => !task.pendingDone && !task.pendingDelete,
+    );
   }
 
   async getAll(): Promise<OpenTask[]> {
@@ -46,7 +48,15 @@ export class OpenTaskStore {
   }
 
   async getPendingCreate(): Promise<OpenTask[]> {
-    return (await this.getAll()).filter((task) => task.pendingCreate);
+    return (await this.getAll()).filter((task) => task.pendingCreate && !task.pendingDelete);
+  }
+
+  async getPendingReopen(): Promise<OpenTask[]> {
+    return (await this.getAll()).filter((task) => task.pendingReopen);
+  }
+
+  async getPendingDelete(): Promise<OpenTask[]> {
+    return (await this.getAll()).filter((task) => task.pendingDelete);
   }
 
   /**
@@ -56,7 +66,8 @@ export class OpenTaskStore {
    */
   async getPendingUpdate(): Promise<OpenTask[]> {
     return (await this.getAll()).filter(
-      (task) => task.pendingUpdate && !task.pendingCreate && !task.pendingDone,
+      (task) =>
+        task.pendingUpdate && !task.pendingCreate && !task.pendingDone && !task.pendingDelete,
     );
   }
 
@@ -91,6 +102,13 @@ export class OpenTaskStore {
     });
   }
 
+  async clearPendingReopen(id: string): Promise<void> {
+    this.store.mutateOpenTasks((rows) => {
+      const task = rows.get(id);
+      if (task) rows.set(id, { ...task, pendingReopen: false });
+    });
+  }
+
   async delete(id: string): Promise<void> {
     this.store.mutateOpenTasks((rows) => rows.delete(id));
   }
@@ -98,13 +116,23 @@ export class OpenTaskStore {
   /**
    * Prunes tasks the server no longer lists as open. Rows with pending local
    * changes are kept: an unpushed create or completion must never be lost to a
-   * pull that ran before the push could reach the server.
+   * pull that ran before the push could reach the server — and an undone
+   * conclusion is still "done" to the server until its reopen lands, so it
+   * would otherwise be pruned the moment it was restored.
    */
   async deleteSyncedNotIn(ids: readonly string[]): Promise<void> {
     const keep = new Set(ids);
     this.store.mutateOpenTasks((rows) => {
       for (const [id, task] of rows) {
-        if (!task.pendingDone && !task.pendingCreate && !keep.has(id)) rows.delete(id);
+        if (
+          !task.pendingDone &&
+          !task.pendingCreate &&
+          !task.pendingReopen &&
+          !task.pendingDelete &&
+          !keep.has(id)
+        ) {
+          rows.delete(id);
+        }
       }
     });
   }
@@ -147,6 +175,11 @@ export class CompletedTaskStore {
 
   async upsert(entry: CompletedTask): Promise<void> {
     this.store.mutateCompletedTasks((rows) => rows.set(entry.id, entry));
+  }
+
+  /** Undoing a conclusion: the task was never closed, so the calendar forgets it. */
+  async delete(id: string): Promise<void> {
+    this.store.mutateCompletedTasks((rows) => rows.delete(id));
   }
 
   /**

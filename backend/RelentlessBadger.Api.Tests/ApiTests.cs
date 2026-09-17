@@ -141,6 +141,60 @@ public class ApiTests : IClassFixture<TestAppFactory>
     }
 
     [Fact]
+    public async Task Reopening_a_closed_task_puts_it_back_on_the_open_list()
+    {
+        var client = await LoginAsync(sub: "reopen-sub");
+        var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("water plants")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+        (await client.PostAsJsonAsync($"/tasks/{task!.Id}/complete", new CompleteTaskRequest(Cancelled: true)))
+            .EnsureSuccessStatusCode();
+
+        var response = await client.PostAsync($"/tasks/{task.Id}/reopen", null);
+        response.EnsureSuccessStatusCode();
+        var reopened = await response.Content.ReadFromJsonAsync<TaskDto>();
+        Assert.Null(reopened!.CompletedAt);
+        Assert.False(reopened.Cancelled);
+
+        Assert.Contains(
+            await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=open") ?? [],
+            t => t.Id == task.Id);
+        Assert.Empty(await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=done") ?? []);
+    }
+
+    [Fact]
+    public async Task Reopening_a_task_the_server_never_had_is_not_found()
+    {
+        var client = await LoginAsync(sub: "reopen-unknown-sub");
+
+        var response = await client.PostAsync($"/tasks/{Guid.NewGuid()}/reopen", null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Closing_a_task_again_after_a_reopen_records_the_new_completion()
+    {
+        var client = await LoginAsync(sub: "reopen-then-close-sub");
+        var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("water plants")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+
+        var firstAt = new DateTime(2026, 7, 20, 6, 15, 0, DateTimeKind.Utc);
+        (await client.PostAsJsonAsync($"/tasks/{task!.Id}/complete", new CompleteTaskRequest(firstAt)))
+            .EnsureSuccessStatusCode();
+        (await client.PostAsync($"/tasks/{task.Id}/reopen", null)).EnsureSuccessStatusCode();
+
+        // The idempotency guard on /complete must not keep the stale timestamp:
+        // after a reopen the task is open again, so this is a genuine new close.
+        var secondAt = firstAt.AddHours(5);
+        var response = await client.PostAsJsonAsync(
+            $"/tasks/{task.Id}/complete", new CompleteTaskRequest(secondAt, Cancelled: true));
+        response.EnsureSuccessStatusCode();
+        var closed = await response.Content.ReadFromJsonAsync<TaskDto>();
+        Assert.Equal(secondAt, DateTime.SpecifyKind(closed!.CompletedAt!.Value, DateTimeKind.Utc));
+        Assert.True(closed.Cancelled);
+    }
+
+    [Fact]
     public async Task First_warning_time_round_trips_and_defaults_to_null()
     {
         var client = await LoginAsync(sub: "first-warning-sub");

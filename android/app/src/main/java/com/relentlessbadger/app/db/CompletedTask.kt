@@ -54,6 +54,10 @@ interface CompletedTaskDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnoring(entries: List<CompletedTaskEntity>)
 
+    /** Undoing a conclusion: the task was never closed, so the calendar forgets it. */
+    @Query("DELETE FROM completed_tasks WHERE id = :id")
+    suspend fun delete(id: String)
+
     @Query("DELETE FROM completed_tasks")
     suspend fun clear()
 }

@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.relentlessbadger.app.AppContainer
 import com.relentlessbadger.app.BuildConfig
 import com.relentlessbadger.app.auth.GoogleSignIn
+import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.Recurrence
@@ -106,6 +107,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Title just removed from suggestions, awaiting its undo snackbar. */
     var dismissedSuggestion by mutableStateOf<String?>(null)
+
+    /** Task just concluded, awaiting its undo snackbar. */
+    var concludedTask by mutableStateOf<ConcludedTask?>(null)
 
     /**
      * Bumped when a task is added, scrolling the list back to the top. A new task
@@ -204,13 +208,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /** [atMillis] closes the task as done at an earlier moment; null means now. */
     fun completeTask(id: String, atMillis: Long? = null) {
         viewModelScope.launch {
-            container.repository.completeTask(id, atMillis)
+            concludedTask = container.repository.completeTask(id, atMillis)
         }
     }
 
     fun cancelTask(id: String) {
         viewModelScope.launch {
-            container.repository.cancelTask(id)
+            concludedTask = container.repository.cancelTask(id)
+        }
+    }
+
+    fun undoConclusion(concluded: ConcludedTask) {
+        viewModelScope.launch {
+            container.repository.undoConclusion(concluded)
         }
     }
 

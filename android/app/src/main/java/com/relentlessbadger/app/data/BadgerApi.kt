@@ -37,6 +37,10 @@ interface BadgerApi {
         @Body request: CompleteTaskRequest,
     ): TaskDto
 
+    /** Undo: the server drops the completion and lists the task as open again. */
+    @POST("tasks/{id}/reopen")
+    suspend fun reopenTask(@Path("id") id: String): TaskDto
+
     @DELETE("tasks/{id}")
     suspend fun deleteTask(@Path("id") id: String): Response<Unit>
 

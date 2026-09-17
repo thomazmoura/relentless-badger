@@ -33,7 +33,7 @@ export class App {
     if (action.taskId === TEST_NOTIFICATION_ID) return;
     switch (action.action) {
       case 'done':
-        await this.state.completeTask(action.taskId);
+        await this.state.completeTaskFromReminder(action.taskId);
         break;
       case 'wait':
         if (action.waitMinutes) {

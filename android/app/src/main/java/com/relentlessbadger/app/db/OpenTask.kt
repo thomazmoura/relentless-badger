@@ -17,7 +17,10 @@ import kotlinx.coroutines.flow.Flow
  * receivers read from here, so everything works offline and across reboots.
  * pendingCreate marks tasks created on-device that still need to reach the API;
  * pendingDone marks tasks completed on-device that still need to reach the API;
- * pendingUpdate marks schedule edits that still need to reach the API.
+ * pendingUpdate marks schedule edits that still need to reach the API;
+ * pendingReopen marks conclusions undone on-device that the server still
+ * believes; pendingDelete marks a spawned occurrence an undo revoked after the
+ * server had already been told about it.
  *
  * A recurring task is an ordinary occurrence carrying its rule: recurEveryN
  * null means not recurring; recurUnit is "days" or "weeks"; recurDaysOfWeek is
@@ -40,14 +43,19 @@ data class OpenTaskEntity(
     val pendingDone: Boolean = false,
     val pendingCreate: Boolean = false,
     val pendingUpdate: Boolean = false,
+    val pendingReopen: Boolean = false,
+    val pendingDelete: Boolean = false,
 )
 
 @Dao
 interface OpenTaskDao {
-    @Query("SELECT * FROM open_tasks WHERE pendingDone = 0 ORDER BY nextFireAtMillis ASC, createdAtMillis DESC")
+    @Query(
+        "SELECT * FROM open_tasks WHERE pendingDone = 0 AND pendingDelete = 0 " +
+            "ORDER BY nextFireAtMillis ASC, createdAtMillis DESC",
+    )
     fun observeActive(): Flow<List<OpenTaskEntity>>
 
-    @Query("SELECT * FROM open_tasks WHERE pendingDone = 0")
+    @Query("SELECT * FROM open_tasks WHERE pendingDone = 0 AND pendingDelete = 0")
     suspend fun getActive(): List<OpenTaskEntity>
 
     @Query("SELECT * FROM open_tasks")
@@ -59,13 +67,22 @@ interface OpenTaskDao {
     @Query("SELECT * FROM open_tasks WHERE pendingDone = 1")
     suspend fun getPendingDone(): List<OpenTaskEntity>
 
-    @Query("SELECT * FROM open_tasks WHERE pendingCreate = 1")
+    @Query("SELECT * FROM open_tasks WHERE pendingCreate = 1 AND pendingDelete = 0")
     suspend fun getPendingCreate(): List<OpenTaskEntity>
+
+    @Query("SELECT * FROM open_tasks WHERE pendingReopen = 1")
+    suspend fun getPendingReopen(): List<OpenTaskEntity>
+
+    @Query("SELECT * FROM open_tasks WHERE pendingDelete = 1")
+    suspend fun getPendingDelete(): List<OpenTaskEntity>
 
     // Rows still pendingCreate are excluded: the PUT would 404 on a server that
     // never saw the task. Creates are pushed (and the flag cleared) earlier in
     // the same sync, so an edited fresh task gets its update through right after.
-    @Query("SELECT * FROM open_tasks WHERE pendingUpdate = 1 AND pendingCreate = 0 AND pendingDone = 0")
+    @Query(
+        "SELECT * FROM open_tasks WHERE pendingUpdate = 1 AND pendingCreate = 0 " +
+            "AND pendingDone = 0 AND pendingDelete = 0",
+    )
     suspend fun getPendingUpdate(): List<OpenTaskEntity>
 
     @Upsert
@@ -83,15 +100,23 @@ interface OpenTaskDao {
     @Query("UPDATE open_tasks SET pendingUpdate = 0 WHERE id = :id")
     suspend fun clearPendingUpdate(id: String)
 
+    @Query("UPDATE open_tasks SET pendingReopen = 0 WHERE id = :id")
+    suspend fun clearPendingReopen(id: String)
+
     @Query("DELETE FROM open_tasks WHERE id = :id")
     suspend fun delete(id: String)
 
     /**
      * Prunes tasks the server no longer lists as open. Rows with pending local
      * changes are kept: an unpushed create or completion must never be lost to
-     * a pull that ran before the push could reach the server.
+     * a pull that ran before the push could reach the server — and an undone
+     * conclusion is still "done" to the server until its reopen lands, so it
+     * would otherwise be pruned the moment it was restored.
      */
-    @Query("DELETE FROM open_tasks WHERE pendingDone = 0 AND pendingCreate = 0 AND id NOT IN (:ids)")
+    @Query(
+        "DELETE FROM open_tasks WHERE pendingDone = 0 AND pendingCreate = 0 " +
+            "AND pendingReopen = 0 AND pendingDelete = 0 AND id NOT IN (:ids)",
+    )
     suspend fun deleteSyncedNotIn(ids: List<String>)
 
     @Query("DELETE FROM open_tasks")
@@ -100,7 +125,7 @@ interface OpenTaskDao {
 
 @Database(
     entities = [OpenTaskEntity::class, TitleHistoryEntity::class, CompletedTaskEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class BadgerDb : RoomDatabase() {
@@ -153,6 +178,14 @@ abstract class BadgerDb : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Everything closed before cancelling existed was genuinely done.
                 db.execSQL("ALTER TABLE completed_tasks ADD COLUMN cancelled INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Nothing was undone before a conclusion could be undone.
+                db.execSQL("ALTER TABLE open_tasks ADD COLUMN pendingReopen INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE open_tasks ADD COLUMN pendingDelete INTEGER NOT NULL DEFAULT 0")
             }
         }
 

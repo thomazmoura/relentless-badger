@@ -64,6 +64,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
@@ -159,6 +160,21 @@ fun MainScreen(
                 viewModel.undoDismissSuggestion(title)
             }
             viewModel.dismissedSuggestion = null
+        }
+    }
+
+    LaunchedEffect(viewModel.concludedTask) {
+        viewModel.concludedTask?.let { concluded ->
+            val verb = if (concluded.cancelled) "Cancelled" else "Done"
+            val result = snackbarHostState.showSnackbar(
+                message = "$verb \"${concluded.task.title}\"",
+                actionLabel = "Undo",
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoConclusion(concluded)
+            }
+            viewModel.concludedTask = null
         }
     }
 

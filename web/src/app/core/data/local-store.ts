@@ -321,5 +321,7 @@ function normalizeOpenTask(row: OpenTask): OpenTask {
     pendingDone: row.pendingDone ?? false,
     pendingCreate: row.pendingCreate ?? false,
     pendingUpdate: row.pendingUpdate ?? false,
+    pendingReopen: row.pendingReopen ?? false,
+    pendingDelete: row.pendingDelete ?? false,
   };
 }

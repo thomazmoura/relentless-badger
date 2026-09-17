@@ -38,6 +38,8 @@ describe('buildMonthEntries', () => {
       pendingDone: false,
       pendingCreate: false,
       pendingUpdate: false,
+      pendingReopen: false,
+      pendingDelete: false,
     };
   };
 

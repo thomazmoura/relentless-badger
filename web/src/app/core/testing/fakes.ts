@@ -44,6 +44,8 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
 
   readonly receivedCreates: CreateTaskRequest[] = [];
   readonly receivedCompletions: string[] = [];
+  readonly receivedReopens: string[] = [];
+  readonly receivedDeletes: string[] = [];
   readonly receivedSettingsPuts: SettingsDto[] = [];
   readonly receivedScheduleUpdates: [string, UpdateTaskScheduleRequest][] = [];
 
@@ -208,6 +210,24 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
     };
     this.tasks.set(id, done);
     return done;
+  }
+
+  async reopenTask(id: string): Promise<TaskDto> {
+    this.gate();
+    const task = this.tasks.get(id);
+    if (!task) throw new ApiError(404);
+    this.receivedReopens.push(id);
+    // Mirrors the server: the close is undone, and reopening an open task is a
+    // no-op rather than an error.
+    const reopened: TaskDto = { ...task, completedAt: null, cancelled: false };
+    this.tasks.set(id, reopened);
+    return reopened;
+  }
+
+  async deleteTask(id: string): Promise<void> {
+    this.gate();
+    if (!this.tasks.delete(id)) throw new ApiError(404);
+    this.receivedDeletes.push(id);
   }
 
   async getTitles(): Promise<string[]> {

@@ -80,6 +80,9 @@ export interface BadgerApi {
   createTask(request: CreateTaskRequest): Promise<TaskDto>;
   updateTaskSchedule(id: string, request: UpdateTaskScheduleRequest): Promise<TaskDto>;
   completeTask(id: string, request: CompleteTaskRequest): Promise<TaskDto>;
+  /** Undo: the server drops the completion and lists the task as open again. */
+  reopenTask(id: string): Promise<TaskDto>;
+  deleteTask(id: string): Promise<void>;
   getTitles(): Promise<string[]>;
 }
 

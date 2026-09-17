@@ -2,6 +2,7 @@ import { Signal } from '@angular/core';
 import { ApiError, NetworkError } from '../domain/errors';
 import {
   CompletedTask,
+  ConcludedTask,
   defaultWaitMinutes,
   OpenTask,
   Recurrence,
@@ -96,6 +97,8 @@ export class TaskRepository {
       pendingDone: false,
       pendingCreate: true,
       pendingUpdate: false,
+      pendingReopen: false,
+      pendingDelete: false,
     };
     await this.dao.upsert(entity);
     this.scheduler.schedule(entity);
@@ -113,8 +116,8 @@ export class TaskRepository {
    * `atMillis` backdates the completion for a task that was really done earlier;
    * undefined stamps it now.
    */
-  async completeTask(id: string, atMillis?: number): Promise<void> {
-    await this.closeTask(id, false, atMillis);
+  async completeTask(id: string, atMillis?: number): Promise<ConcludedTask | null> {
+    return await this.closeTask(id, false, atMillis);
   }
 
   /**
@@ -122,13 +125,80 @@ export class TaskRepository {
    * stops, the record is kept, a recurring occurrence still spawns the next one
    * — but flagged so reports can leave it out.
    */
-  async cancelTask(id: string): Promise<void> {
-    await this.closeTask(id, true);
+  async cancelTask(id: string): Promise<ConcludedTask | null> {
+    return await this.closeTask(id, true);
   }
 
-  private async closeTask(id: string, cancelled: boolean, atMillis?: number): Promise<void> {
+  /**
+   * Reverses a conclusion made here: the task comes back exactly as
+   * `ConcludedTask` snapshotted it, its completion record is dropped, and any
+   * occurrence the conclusion spawned is revoked.
+   *
+   * The snapshot is what makes this work after the completion was already
+   * pushed — that flush deletes the open row, and the cached completion keeps
+   * only the title and the moment, not the schedule. pendingReopen then carries
+   * the reversal to the server, which still believes the task closed.
+   */
+  async undoConclusion(concluded: ConcludedTask): Promise<void> {
+    if (concluded.spawnedId !== null) {
+      await this.revokeSpawnedOccurrence(concluded.spawnedId);
+    }
+    await this.completedDao.delete(concluded.task.id);
+    const now = this.timeSource.now();
+    const restored: OpenTask = {
+      ...concluded.task,
+      pendingDone: false,
+      pendingDelete: false,
+      // A fire time still ahead is a wait the user set before concluding and
+      // should survive the undo; only one the clock has run past needs the next
+      // slot, or the task would nag the instant it returns.
+      nextFireAtMillis:
+        concluded.task.nextFireAtMillis > now
+          ? concluded.task.nextFireAtMillis
+          : computeNextFire(
+              concluded.task.createdAtMillis,
+              concluded.task.initialDelayMinutes,
+              concluded.task.repeatIntervalMinutes,
+              now,
+              concluded.task.firstWarningAtMillis,
+            ),
+      // Set even when the completion still looks unpushed: the push may have
+      // reached the server with only the response lost, and a reopen the server
+      // has nothing to undo is a harmless no-op.
+      pendingReopen: true,
+    };
+    await this.dao.upsert(restored);
+    this.scheduler.schedule(restored);
+    this.syncScheduler.requestSync();
+  }
+
+  /**
+   * Takes back the occurrence a conclusion spawned. One the user has since acted
+   * on is left alone: an extra occurrence is a smaller surprise than silently
+   * destroying work done after the conclusion being undone.
+   */
+  private async revokeSpawnedOccurrence(id: string): Promise<void> {
+    const spawn = await this.dao.getById(id);
+    if (spawn === null) return;
+    if (spawn.pendingDone || spawn.pendingUpdate) return;
+    this.scheduler.cancel(id);
+    if (spawn.pendingCreate) {
+      // The server never heard about it, so it can just go.
+      await this.dao.delete(id);
+    } else {
+      // Hidden from the list right away; the server copy dies on the next sync,
+      // so an undo made offline still takes it back.
+      await this.dao.upsert({ ...spawn, pendingDelete: true });
+    }
+  }
+
+  private async closeTask(
+    id: string,
+    cancelled: boolean,
+    atMillis?: number,
+  ): Promise<ConcludedTask | null> {
     const task = await this.dao.getById(id);
-    if (task === null) return;
+    if (task === null) return null;
     const now = this.timeSource.now();
     // Clamped to the task's own lifetime, so no picker — however stale — can
     // claim the task was done before it existed or in the future.
@@ -144,16 +214,18 @@ export class TaskRepository {
       seriesId: task.seriesId,
       cancelled,
     });
+    // pendingReopen is deliberately left alone: closing a task whose undo never
+    // reached the server has to push the reopen first, or the server's
+    // idempotent complete would keep the conclusion being redone.
     await this.dao.markPendingDone(id);
     this.scheduler.cancel(id);
     // spawnNextOccurrence deliberately doesn't see `completedAtMillis`: the next
     // occurrence is anchored after the present moment, so backdating a late
     // completion doesn't spawn one that is already overdue and nagging.
     const recurrence = taskRecurrence(task);
-    if (recurrence !== null) {
-      await this.spawnNextOccurrence(task, recurrence);
-    }
+    const spawnedId = recurrence !== null ? await this.spawnNextOccurrence(task, recurrence) : null;
     this.syncScheduler.requestSync();
+    return { task, completedAtMillis, cancelled, spawnedId };
   }
 
   /**
@@ -161,12 +233,17 @@ export class TaskRepository {
    * double-complete (or two devices completing the same occurrence) mints the
    * same id and dedupes locally and via the idempotent create.
    */
-  private async spawnNextOccurrence(done: OpenTask, recurrence: Recurrence): Promise<void> {
+  private async spawnNextOccurrence(
+    done: OpenTask,
+    recurrence: Recurrence,
+  ): Promise<string | null> {
     const anchor = done.firstWarningAtMillis ?? done.createdAtMillis;
     const nextAt = computeNextOccurrence(anchor, recurrence, this.timeSource.now());
     const seriesId = done.seriesId ?? done.id;
     const nextId = nameUuidFromBytes(`${seriesId}:${nextAt}`);
-    if ((await this.dao.getById(nextId)) !== null) return;
+    // Null, not the id: this close didn't mint it, so an undo of this close has
+    // no business taking it back.
+    if ((await this.dao.getById(nextId)) !== null) return null;
     const next: OpenTask = {
       ...done,
       id: nextId,
@@ -181,6 +258,7 @@ export class TaskRepository {
     await this.dao.upsert(next);
     this.scheduler.schedule(next);
     // No titleDao.recordUse: spawns shouldn't inflate suggestion ranks.
+    return nextId;
   }
 
   /**
@@ -397,9 +475,15 @@ export class TaskRepository {
    * errors propagate so callers (scheduler/UI) can retry or report.
    */
   async sync(): Promise<void> {
+    // Creates first: a reopen or completion for a task the server has never seen
+    // would 404. Reopens before completions, so a task concluded, undone and
+    // concluded again ends up closed at the latest moment rather than blocked by
+    // the server's idempotent complete.
     await this.pushPendingCreates();
+    await this.flushPendingReopens();
     await this.pushPendingUpdates();
     await this.flushPendingCompletions();
+    await this.flushPendingDeletes();
     await this.pushSettingsIfDirty();
 
     const remote = await this.apiClient.api().getTasks('open');
@@ -409,14 +493,23 @@ export class TaskRepository {
       if (local === undefined) return toEntity(dto, this.timeSource.now());
       // Local pending changes win until pushed; otherwise adopt schedule edits
       // made on other devices while preserving the local nag state.
-      return local.pendingCreate || local.pendingUpdate || local.pendingDone
+      return local.pendingCreate ||
+        local.pendingUpdate ||
+        local.pendingDone ||
+        local.pendingReopen ||
+        local.pendingDelete
         ? local
         : mergeServerSchedule(local, dto, this.timeSource.now());
     });
     await this.dao.upsertAll(entities);
     const remoteIds = new Set(remote.map((dto) => dto.id));
     for (const task of known.values()) {
-      if (!task.pendingDone && !task.pendingCreate && !remoteIds.has(task.id)) {
+      if (
+        !task.pendingDone &&
+        !task.pendingCreate &&
+        !task.pendingReopen &&
+        !remoteIds.has(task.id)
+      ) {
         this.scheduler.cancel(task.id);
       }
     }
@@ -427,9 +520,22 @@ export class TaskRepository {
     // the locally cached row (with the truthful local time) wins. The full
     // history is small; add a `since` param server-side if it grows.
     const done = await this.apiClient.api().getTasks('done');
+    // A conclusion undone here is still on the server's done list until its
+    // reopen lands, and a task another device reopened has to lose the
+    // completion this one cached — so the open list prunes, and rows still
+    // waiting to be reopened are skipped rather than resurrected.
+    const reopening = new Set((await this.dao.getPendingReopen()).map((task) => task.id));
+    // Not the ones still waiting to be pushed: the server calls those open only
+    // because it hasn't been told yet, and their cached row holds the truthful
+    // local completion time.
+    const closingLocally = new Set((await this.dao.getPendingDone()).map((task) => task.id));
+    for (const id of remoteIds) {
+      if (!closingLocally.has(id)) await this.completedDao.delete(id);
+    }
     await this.completedDao.insertIgnoring(
       done
         .filter((dto): dto is TaskDto & { completedAt: string } => !!dto.completedAt)
+        .filter((dto) => !reopening.has(dto.id))
         .map((dto) => ({
           id: dto.id,
           title: dto.title,
@@ -528,6 +634,43 @@ export class TaskRepository {
     }
   }
 
+  private async flushPendingReopens(): Promise<void> {
+    for (const task of await this.dao.getPendingReopen()) {
+      try {
+        await this.apiClient.api().reopenTask(task.id);
+        await this.dao.clearPendingReopen(task.id);
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        if (error.status === 401) throw error;
+        // 404: the server has no conclusion to undo (the task never reached it,
+        // or was deleted elsewhere) — the reopen is moot and retrying it forever
+        // would wedge sync. Other 4xx the same. 5xx: keep the flag and retry.
+        if (error.status >= 400 && error.status <= 499) {
+          await this.dao.clearPendingReopen(task.id);
+        }
+      }
+    }
+  }
+
+  /**
+   * Occurrences an undo took back after the server had already been told about
+   * them. The local row is kept (hidden) until the delete lands, so an undo made
+   * offline still reaches the server later.
+   */
+  private async flushPendingDeletes(): Promise<void> {
+    for (const task of await this.dao.getPendingDelete()) {
+      try {
+        await this.apiClient.api().deleteTask(task.id);
+        await this.dao.delete(task.id);
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        if (error.status === 401) throw error;
+        // 404 means it is already gone; either way the row has done its job.
+        if (error.status === 404) await this.dao.delete(task.id);
+      }
+    }
+  }
+
   private async flushPendingCompletions(): Promise<void> {
     for (const task of await this.dao.getPendingDone()) {
       try {
@@ -593,6 +736,8 @@ export function toEntity(dto: TaskDto, nowMillis: number): OpenTask {
     pendingDone: false,
     pendingCreate: false,
     pendingUpdate: false,
+    pendingReopen: false,
+    pendingDelete: false,
   };
 }
 

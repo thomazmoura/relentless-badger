@@ -7,7 +7,10 @@
 /**
  * Local copy of every open (not yet completed) task — the source of truth the
  * app runs off. pendingCreate marks tasks created here that still need to reach
- * the API; pendingDone marks completions; pendingUpdate marks schedule edits.
+ * the API; pendingDone marks completions; pendingUpdate marks schedule edits;
+ * pendingReopen marks conclusions undone here that the server still believes;
+ * pendingDelete marks a spawned occurrence an undo revoked after the server had
+ * already been told about it.
  *
  * A recurring task is an ordinary occurrence carrying its rule: recurEveryN
  * null means not recurring; recurUnit is "days" or "weeks"; recurDaysOfWeek is
@@ -30,6 +33,26 @@ export interface OpenTask {
   readonly pendingDone: boolean;
   readonly pendingCreate: boolean;
   readonly pendingUpdate: boolean;
+  readonly pendingReopen: boolean;
+  readonly pendingDelete: boolean;
+}
+
+/**
+ * Receipt for a task that was just concluded, handed back by
+ * `TaskRepository.completeTask` / `cancelTask` and given to
+ * `TaskRepository.undoConclusion` to reverse it.
+ *
+ * It carries the whole pre-close row rather than an id because the undo has to
+ * survive the sync flush that deletes it. The UI holds one for as long as its
+ * snackbar is up; nothing persists it, since the offer to undo dies with the
+ * page anyway.
+ */
+export interface ConcludedTask {
+  readonly task: OpenTask;
+  readonly completedAtMillis: number;
+  readonly cancelled: boolean;
+  /** The next occurrence this conclusion spawned, if the task recurs. */
+  readonly spawnedId: string | null;
 }
 
 /**

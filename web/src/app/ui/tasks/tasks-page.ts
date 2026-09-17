@@ -247,6 +247,17 @@ export class TasksPage {
         .subscribe(() => void this.state.undoDismissSuggestion(dismissed));
     });
 
+    effect(() => {
+      const concluded = this.state.concludedTask();
+      if (!concluded) return;
+      this.state.concludedTask.set(null);
+      const verb = concluded.cancelled ? 'Cancelled' : 'Done';
+      this.snackBar
+        .open(`${verb} "${concluded.task.title}"`, 'Undo', { duration: 6000 })
+        .onAction()
+        .subscribe(() => void this.state.undoConclusion(concluded));
+    });
+
     // Acting on a task usually moves it down the list, and the tasks that end up
     // on top are the ones firing soonest — exactly what the user needs to see to
     // decide whether they want to wait on those too.
@@ -294,7 +305,8 @@ export class TasksPage {
       };
       for (const type of ROW_TAP_EVENTS) body.addEventListener(type, swallow, { capture: true });
       this.destroyRef.onDestroy(() => {
-        for (const type of ROW_TAP_EVENTS) body.removeEventListener(type, swallow, { capture: true });
+        for (const type of ROW_TAP_EVENTS)
+          body.removeEventListener(type, swallow, { capture: true });
       });
     });
   }

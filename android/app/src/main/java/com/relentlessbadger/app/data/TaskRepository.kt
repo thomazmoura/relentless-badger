@@ -133,8 +133,65 @@ class TaskRepository(
      */
     suspend fun cancelTask(id: String) = closeTask(id, cancelled = true)
 
-    private suspend fun closeTask(id: String, cancelled: Boolean, atMillis: Long? = null) {
-        val task = dao.getById(id) ?: return
+    /**
+     * Reverses a conclusion made on this device: the task comes back exactly as
+     * [ConcludedTask] snapshotted it, its completion record is dropped, and any
+     * occurrence the conclusion spawned is revoked.
+     *
+     * The snapshot is what makes this work after the completion was already
+     * pushed — that flush deletes the open row, and the cached completion keeps
+     * only the title and the moment, not the schedule. pendingReopen then
+     * carries the reversal to the server, which still believes the task closed.
+     */
+    suspend fun undoConclusion(concluded: ConcludedTask) {
+        concluded.spawnedId?.let { revokeSpawnedOccurrence(it) }
+        completedDao.delete(concluded.task.id)
+        val now = timeSource.now()
+        val restored = concluded.task.copy(
+            pendingDone = false,
+            pendingDelete = false,
+            // A fire time still ahead is a wait the user set before concluding
+            // and should survive the undo; only one the clock has run past
+            // needs the next slot, or the task would nag the instant it returns.
+            nextFireAtMillis = concluded.task.nextFireAtMillis.takeIf { it > now }
+                ?: computeNextFire(
+                    concluded.task.createdAtMillis,
+                    concluded.task.initialDelayMinutes,
+                    concluded.task.repeatIntervalMinutes,
+                    now,
+                    concluded.task.firstWarningAtMillis,
+                ),
+            // Set even when the completion still looks unpushed: the push may
+            // have reached the server with only the response lost, and a reopen
+            // the server has nothing to undo is a harmless no-op.
+            pendingReopen = true,
+        )
+        dao.upsert(restored)
+        arm(restored)
+        syncScheduler.requestSync()
+    }
+
+    /**
+     * Takes back the occurrence a conclusion spawned. One the user has since
+     * acted on is left alone: an extra occurrence is a smaller surprise than
+     * silently destroying work done after the conclusion being undone.
+     */
+    private suspend fun revokeSpawnedOccurrence(id: String) {
+        val spawn = dao.getById(id) ?: return
+        if (spawn.pendingDone || spawn.pendingUpdate) return
+        scheduler.cancel(id)
+        if (spawn.pendingCreate) {
+            // The server never heard about it, so it can just go.
+            dao.delete(id)
+        } else {
+            // Hidden from the list right away; the server copy dies on the next
+            // sync, so an undo made offline still takes it back.
+            dao.upsert(spawn.copy(pendingDelete = true))
+        }
+    }
+
+    private suspend fun closeTask(id: String, cancelled: Boolean, atMillis: Long? = null): ConcludedTask? {
+        val task = dao.getById(id) ?: return null
         // Clamped to the task's own lifetime, so no picker — however stale — can
         // claim the task was done before it existed or in the future.
         val completedAt = atMillis?.coerceIn(task.createdAtMillis, timeSource.now())
@@ -145,13 +202,17 @@ class TaskRepository(
         completedDao.upsert(
             CompletedTaskEntity(task.id, task.title, completedAt, task.seriesId, cancelled),
         )
+        // pendingReopen is deliberately left alone: closing a task whose undo
+        // never reached the server has to push the reopen first, or the
+        // server's idempotent complete would keep the conclusion being redone.
         dao.markPendingDone(id)
         scheduler.cancel(id)
         // Deliberately not given `completedAt`: the next occurrence is anchored
         // after the present moment, so backdating a late completion doesn't
         // spawn one that is already overdue and nagging.
-        task.recurrence()?.let { spawnNextOccurrence(task, it) }
+        val spawnedId = task.recurrence()?.let { spawnNextOccurrence(task, it) }
         syncScheduler.requestSync()
+        return ConcludedTask(task, completedAt, cancelled, spawnedId)
     }
 
     /**
@@ -159,12 +220,14 @@ class TaskRepository(
      * so a double-complete (or two devices completing the same occurrence)
      * mints the same id and dedupes locally and via the idempotent create.
      */
-    private suspend fun spawnNextOccurrence(done: OpenTaskEntity, recurrence: Recurrence) {
+    private suspend fun spawnNextOccurrence(done: OpenTaskEntity, recurrence: Recurrence): String? {
         val anchor = done.firstWarningAtMillis ?: done.createdAtMillis
         val nextAt = computeNextOccurrence(anchor, recurrence, afterMillis = timeSource.now())
         val seriesId = done.seriesId ?: done.id
         val nextId = UUID.nameUUIDFromBytes("$seriesId:$nextAt".toByteArray()).toString()
-        if (dao.getById(nextId) != null) return
+        // Null, not the id: this close didn't mint it, so an undo of this close
+        // has no business taking it back.
+        if (dao.getById(nextId) != null) return null
         val next = done.copy(
             id = nextId,
             createdAtMillis = timeSource.now(),
@@ -178,6 +241,7 @@ class TaskRepository(
         dao.upsert(next)
         arm(next)
         // No titleDao.recordUse: spawns shouldn't inflate suggestion ranks.
+        return nextId
     }
 
     /**
@@ -436,9 +500,15 @@ class TaskRepository(
      * Network errors propagate so callers (worker/UI) can retry or report.
      */
     suspend fun sync() {
+        // Creates first: a reopen or completion for a task the server has never
+        // seen would 404. Reopens before completions, so a task concluded,
+        // undone and concluded again ends up closed at the latest moment rather
+        // than blocked by the server's idempotent complete.
         pushPendingCreates()
+        flushPendingReopens()
         pushPendingUpdates()
         flushPendingCompletions()
+        flushPendingDeletes()
         pushSettingsIfDirty()
 
         val remote = apiClient.api().getTasks("open")
@@ -447,7 +517,9 @@ class TaskRepository(
             val local = known[dto.id] ?: return@map dto.toEntity(timeSource.now())
             // Local pending changes win until pushed; otherwise adopt schedule
             // edits made on other devices while preserving the local nag state.
-            if (local.pendingCreate || local.pendingUpdate || local.pendingDone) {
+            if (local.pendingCreate || local.pendingUpdate || local.pendingDone ||
+                local.pendingReopen || local.pendingDelete
+            ) {
                 local
             } else {
                 local.mergeServerSchedule(dto, timeSource.now())
@@ -456,7 +528,10 @@ class TaskRepository(
         dao.upsertAll(entities)
         val remoteIds = remote.map { it.id }.toSet()
         known.values
-            .filter { !it.pendingDone && !it.pendingCreate && it.id !in remoteIds }
+            .filter {
+                !it.pendingDone && !it.pendingCreate && !it.pendingReopen &&
+                    it.id !in remoteIds
+            }
             .forEach { scheduler.cancel(it.id) }
         dao.deleteSyncedNotIn(remoteIds.ifEmpty { setOf("") }.toList())
 
@@ -465,9 +540,20 @@ class TaskRepository(
         // but the locally cached row (with the truthful local time) wins. The
         // full history is small; add a `since` param server-side if it grows.
         val done = apiClient.api().getTasks("done")
+        // A conclusion undone here is still on the server's done list until its
+        // reopen lands, and a task another device reopened has to lose the
+        // completion this one cached — so the open list prunes, and rows still
+        // waiting to be reopened are skipped rather than resurrected.
+        val reopening = dao.getPendingReopen().map { it.id }.toSet()
+        // Not the ones still waiting to be pushed: the server calls those open
+        // only because it hasn't been told yet, and their cached row holds the
+        // truthful local completion time.
+        val closingLocally = dao.getPendingDone().map { it.id }.toSet()
+        remoteIds.filter { it !in closingLocally }.forEach { completedDao.delete(it) }
         completedDao.insertIgnoring(
             done.mapNotNull { dto ->
                 val completedAt = dto.completedAt ?: return@mapNotNull null
+                if (dto.id in reopening) return@mapNotNull null
                 CompletedTaskEntity(
                     dto.id, dto.title, Instant.parse(completedAt).toEpochMilli(), dto.seriesId,
                     dto.cancelled,
@@ -557,6 +643,41 @@ class TaskRepository(
                     // sync. 5xx: keep the flag and retry next sync.
                     e.code() in 400..499 -> dao.clearPendingUpdate(task.id)
                 }
+            }
+        }
+    }
+
+    private suspend fun flushPendingReopens() {
+        for (task in dao.getPendingReopen()) {
+            try {
+                apiClient.api().reopenTask(task.id)
+                dao.clearPendingReopen(task.id)
+            } catch (e: HttpException) {
+                when {
+                    e.code() == 401 -> throw e
+                    // 404: the server has no conclusion to undo (the task never
+                    // reached it, or was deleted elsewhere) — the reopen is moot
+                    // and retrying it forever would wedge sync. Other 4xx the
+                    // same. 5xx: keep the flag and retry next sync.
+                    e.code() in 400..499 -> dao.clearPendingReopen(task.id)
+                }
+            }
+        }
+    }
+
+    /**
+     * Occurrences an undo took back after the server had already been told
+     * about them. The local row is kept (hidden) until the delete lands, so an
+     * undo made offline still reaches the server later.
+     */
+    private suspend fun flushPendingDeletes() {
+        for (task in dao.getPendingDelete()) {
+            val response = apiClient.api().deleteTask(task.id)
+            // 404 means it is already gone; either way the row has done its job.
+            if (response.isSuccessful || response.code() == 404) {
+                dao.delete(task.id)
+            } else if (response.code() == 401) {
+                throw HttpException(response)
             }
         }
     }

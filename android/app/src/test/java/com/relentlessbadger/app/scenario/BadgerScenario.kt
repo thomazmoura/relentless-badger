@@ -3,6 +3,7 @@ package com.relentlessbadger.app.scenario
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.data.TaskDto
@@ -123,6 +124,8 @@ class BadgerScenario {
         repository.completeTask(id, atMillis)
 
     suspend fun whenTaskCancelled(id: String) = repository.cancelTask(id)
+
+    suspend fun whenConclusionUndone(concluded: ConcludedTask) = repository.undoConclusion(concluded)
 
     suspend fun whenScheduleEdited(
         id: String,
@@ -254,6 +257,8 @@ class BadgerScenario {
         assertTrue("expected no completions pushed", server.receivedCompletions.isEmpty())
         assertTrue("expected no settings pushed", server.receivedSettingsPuts.isEmpty())
         assertTrue("expected no schedule updates pushed", server.receivedScheduleUpdates.isEmpty())
+        assertTrue("expected no reopens pushed", server.receivedReopens.isEmpty())
+        assertTrue("expected no deletes pushed", server.receivedDeletes.isEmpty())
     }
 
     fun close() = db.close()

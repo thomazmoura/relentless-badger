@@ -136,6 +136,24 @@ public static class TaskEndpoints
             return Results.Ok(TaskDto.From(task));
         });
 
+        group.MapPost("/{id:guid}/reopen", async (Guid id, ClaimsPrincipal principal, AppDbContext db) =>
+        {
+            var userId = principal.GetUserId();
+            var task = await db.Tasks.SingleOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+            if (task is null)
+            {
+                return Results.NotFound();
+            }
+
+            // Undoing a close on the device that made it. Idempotent like
+            // completing, so a re-pushed reopen (or one racing the pull that
+            // already reported the task open) is harmless.
+            task.CompletedAt = null;
+            task.Cancelled = false;
+            await db.SaveChangesAsync();
+            return Results.Ok(TaskDto.From(task));
+        });
+
         group.MapDelete("/{id:guid}", async (Guid id, ClaimsPrincipal principal, AppDbContext db) =>
         {
             var userId = principal.GetUserId();

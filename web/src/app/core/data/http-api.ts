@@ -59,6 +59,14 @@ export class HttpBadgerApi implements BadgerApi, ApiProvider {
     return this.send(this.http.post<TaskDto>(`tasks/${encodeURIComponent(id)}/complete`, request));
   }
 
+  reopenTask(id: string): Promise<TaskDto> {
+    return this.send(this.http.post<TaskDto>(`tasks/${encodeURIComponent(id)}/reopen`, {}));
+  }
+
+  deleteTask(id: string): Promise<void> {
+    return this.send(this.http.delete<void>(`tasks/${encodeURIComponent(id)}`));
+  }
+
   getTitles(): Promise<string[]> {
     return this.send(this.http.get<string[]>('tasks/titles'));
   }

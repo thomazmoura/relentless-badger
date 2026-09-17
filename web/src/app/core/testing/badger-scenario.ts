@@ -3,7 +3,7 @@ import { BadgerStore } from '../data/local-store';
 import { MemoryStorageDriver } from '../data/storage';
 import { CompletedTaskStore, OpenTaskStore, TitleStore } from '../data/task-store';
 import { TaskRepository } from '../data/task-repository';
-import { CompletedTask, OpenTask, Recurrence, SettingsDto } from '../domain/models';
+import { CompletedTask, ConcludedTask, OpenTask, Recurrence, SettingsDto } from '../domain/models';
 import {
   FakeBadgerApi,
   FakeSettingsStore,
@@ -102,12 +102,16 @@ export class BadgerScenario {
     return this.repository.addTask(title, firstWarningAtMillis, recurrence);
   }
 
-  whenTaskCompleted(id: string, atMillis?: number): Promise<void> {
+  whenTaskCompleted(id: string, atMillis?: number): Promise<ConcludedTask | null> {
     return this.repository.completeTask(id, atMillis);
   }
 
-  whenTaskCancelled(id: string): Promise<void> {
+  whenTaskCancelled(id: string): Promise<ConcludedTask | null> {
     return this.repository.cancelTask(id);
+  }
+
+  whenConclusionUndone(concluded: ConcludedTask): Promise<void> {
+    return this.repository.undoConclusion(concluded);
   }
 
   whenScheduleEdited(
@@ -275,5 +279,7 @@ export class BadgerScenario {
     expect(this.server.receivedCompletions, 'expected no completions pushed').toEqual([]);
     expect(this.server.receivedSettingsPuts, 'expected no settings pushed').toEqual([]);
     expect(this.server.receivedScheduleUpdates, 'expected no schedule updates pushed').toEqual([]);
+    expect(this.server.receivedReopens, 'expected no reopens pushed').toEqual([]);
+    expect(this.server.receivedDeletes, 'expected no deletes pushed').toEqual([]);
   }
 }
