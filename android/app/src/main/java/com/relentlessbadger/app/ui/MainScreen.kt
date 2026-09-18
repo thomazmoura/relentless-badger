@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import android.text.format.DateFormat
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -23,7 +22,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -263,7 +261,7 @@ fun MainScreen(
                 (it.firstWarningAtMillis ?: 0L) > nowMillis
             }
             val keys = rowKeys(active.map { it.id }, scheduled.map { it.id })
-            // Rows are keyed so they can slide to their new slot, but LazyColumn
+            // Rows are keyed so each one's state stays with its task, but LazyColumn
             // anchors its scroll on the first visible item's key — the viewport
             // would chase whichever row moved, and rows move on their own as a
             // fired nag or a sync rewrites the time the list sorts by. Pinning the
@@ -308,7 +306,7 @@ fun MainScreen(
             } else {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                     items(active, key = { it.id }) { task ->
-                        Column(rowAnimation()) {
+                        Column {
                             TaskRow(
                                 task = task,
                                 scheduled = false,
@@ -336,11 +334,11 @@ fun MainScreen(
                                 "Scheduled",
                                 style = MaterialTheme.typography.titleSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = rowAnimation().padding(top = 16.dp, bottom = 4.dp),
+                                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
                             )
                         }
                         items(scheduled, key = { it.id }) { task ->
-                            Column(rowAnimation()) {
+                            Column {
                                 TaskRow(
                                     task = task,
                                     scheduled = true,
@@ -806,17 +804,6 @@ internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
         .format(if (use24Hour) dateTimeFormatter24 else dateTimeFormatter12)
 
-/**
- * How a list row travels when the order changes: it slides from its old slot to
- * its new one, so the eye can follow it. New rows fade in; removed rows don't
- * linger, so their neighbours visibly close the gap.
- */
-private fun LazyItemScope.rowAnimation(): Modifier = Modifier.animateItem(
-    fadeInSpec = tween(ROW_MOVE_ANIMATION_MILLIS),
-    placementSpec = tween(ROW_MOVE_ANIMATION_MILLIS, easing = FastOutSlowInEasing),
-    fadeOutSpec = null,
-)
-
 @Composable
 private fun TaskRow(
     task: OpenTaskEntity,
@@ -847,7 +834,7 @@ private fun TaskRow(
     )
     val buttonFade = Modifier.graphicsLayer { alpha = buttonAlpha }
     // Everything on the row's face is gated by [canAct], asked at the moment of
-    // the tap: while rows are sliding, the task under the finger may not be the
+    // the tap: just after a reorder, the task under the finger may not be the
     // one the user aimed at. The menus aren't — they already belong to a task,
     // so they keep their ripple too.
     Row(

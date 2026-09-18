@@ -27,12 +27,7 @@ import { DateTimePickerDialog } from '../dialogs/date-time-picker-dialog';
 import { EditScheduleDialog, EditScheduleResult } from '../dialogs/edit-schedule-dialog';
 import { WaitOptionsDialog, WaitOptionsResult } from '../dialogs/wait-options-dialog';
 import { QuickAdd } from './quick-add';
-import {
-  ROW_MOVE_ANIMATION_MILLIS,
-  RowMovementGuard,
-  SCHEDULED_HEADER_KEY,
-  rowKeys,
-} from './row-movement-guard';
+import { RowMovementGuard, SCHEDULED_HEADER_KEY, rowKeys } from './row-movement-guard';
 import { TaskRow } from './task-row';
 
 /** The event types that start or complete an action on a row. */
@@ -107,7 +102,7 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
         } @else {
           <div class="task-list">
             @for (task of active(); track task.id) {
-              <div [attr.data-row-key]="task.id">
+              <div>
                 <app-task-row
                   [task]="task"
                   [nowMillis]="state.nowMillis()"
@@ -125,9 +120,9 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
               </div>
             }
             @if (scheduled().length > 0) {
-              <p class="section" [attr.data-row-key]="scheduledHeaderKey">Scheduled</p>
+              <p class="section">Scheduled</p>
               @for (task of scheduled(); track task.id) {
-                <div [attr.data-row-key]="task.id">
+                <div>
                   <app-task-row
                     [task]="task"
                     [nowMillis]="state.nowMillis()"
@@ -182,11 +177,6 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
       font: var(--mat-sys-title-medium);
       color: var(--mat-sys-on-surface);
     }
-    // The offsets the slide animation compares are measured against this box,
-    // so banners above the list coming and going don't read as rows moving.
-    .task-list {
-      position: relative;
-    }
     .section {
       font: var(--mat-sys-title-small);
       color: var(--mat-sys-on-surface-variant);
@@ -202,7 +192,6 @@ export class TasksPage {
   private readonly destroyRef = inject(DestroyRef);
 
   readonly use24Hour = prefers24Hour();
-  readonly scheduledHeaderKey = SCHEDULED_HEADER_KEY;
 
   private readonly body = viewChild.required<ElementRef<HTMLElement>>('body');
 
@@ -213,8 +202,6 @@ export class TasksPage {
    */
   readonly tapsLocked = signal(false);
   private tapLockRelease: ReturnType<typeof setTimeout> | null = null;
-  /** Each row's offset in the list as of the last render, by row key. */
-  private rowOffsets = new Map<string, number>();
 
   private readonly partitioned = computed(() => {
     const now = this.state.nowMillis();
@@ -274,16 +261,14 @@ export class TasksPage {
       if (task) void this.openWaitOptions(task);
     });
 
-    // Runs after every render that touched the rows, including the countdown
-    // tick, so the stored offsets never go stale when a row's height changes.
+    // Runs after every render that touched the rows, so the guard sees the order
+    // the user is actually looking at rather than one a pending render will undo.
     afterRenderEffect(() => {
       const keys = rowKeys(
         this.active().map((task) => task.id),
         this.scheduled().map((task) => task.id),
       );
-      const changed = this.movementGuard.observe(keys);
-      this.measureRows(changed);
-      if (changed && !this.movementGuard.allowsTap()) this.holdTapLock();
+      if (this.movementGuard.observe(keys) && !this.movementGuard.allowsTap()) this.holdTapLock();
     });
     this.destroyRef.onDestroy(() => {
       if (this.tapLockRelease !== null) clearTimeout(this.tapLockRelease);
@@ -322,38 +307,6 @@ export class TasksPage {
     const remaining = this.movementGuard.tapLockRemainingMillis();
     this.tapsLocked.set(remaining > 0);
     if (remaining > 0) this.tapLockRelease = setTimeout(() => this.holdTapLock(), remaining);
-  }
-
-  /**
-   * Records where each row sits and, when the order changed, slides every row
-   * that moved from its old slot to its new one so the eye can follow it. New rows
-   * fade in; removed rows don't linger, so their neighbours visibly close the gap.
-   * Rows are re-rendered in place (`track task.id`), so the elements are the same
-   * ones that were measured before.
-   */
-  private measureRows(orderChanged: boolean): void {
-    const rows = this.body().nativeElement.querySelectorAll<HTMLElement>('[data-row-key]');
-    const previous = this.rowOffsets;
-    this.rowOffsets = new Map(Array.from(rows, (row) => [row.dataset['rowKey']!, row.offsetTop]));
-    // Nothing to animate from on the first list shown, just like a fresh Compose list.
-    if (!orderChanged || previous.size === 0) return;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-    const timing = { duration: ROW_MOVE_ANIMATION_MILLIS, easing: 'cubic-bezier(0.2, 0, 0, 1)' };
-    for (const row of rows) {
-      const key = row.dataset['rowKey']!;
-      const was = previous.get(key);
-      if (was === undefined) {
-        row.animate([{ opacity: 0 }, { opacity: 1 }], timing);
-        continue;
-      }
-      const shift = was - this.rowOffsets.get(key)!;
-      if (shift === 0) continue;
-      // A row caught mid-slide restarts from its last settled slot rather than
-      // stacking two slides.
-      for (const running of row.getAnimations()) running.cancel();
-      row.animate([{ transform: `translateY(${shift}px)` }, { transform: 'none' }], timing);
-    }
   }
 
   async editSchedule(task: OpenTask): Promise<void> {

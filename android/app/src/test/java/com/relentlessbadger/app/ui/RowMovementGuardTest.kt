@@ -31,7 +31,7 @@ class RowMovementGuardTest {
     }
 
     @Test
-    fun `removing a middle row locks taps because the rows below slide up`() {
+    fun `removing a middle row locks taps because the rows below shift up`() {
         guard.observe(listOf("a", "b", "c"))
 
         guard.observe(listOf("a", "c"))

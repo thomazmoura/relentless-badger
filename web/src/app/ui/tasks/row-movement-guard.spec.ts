@@ -33,7 +33,7 @@ describe('RowMovementGuard', () => {
     expect(guard.allowsTap()).toBe(true);
   });
 
-  it('removing a middle row locks taps because the rows below slide up', () => {
+  it('removing a middle row locks taps because the rows below shift up', () => {
     guard.observe(['a', 'b', 'c']);
 
     guard.observe(['a', 'c']);

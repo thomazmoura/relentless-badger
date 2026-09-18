@@ -123,7 +123,7 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
       color: var(--mat-sys-primary);
     }
     // While taps are locked the buttons fade to Material's disabled alpha, so
-    // a tap the list swallows looks like it never landed rather than like it
+    // a tap the page swallows looks like it never landed rather than like it
     // worked. Only the buttons: dimming the whole row would flash the task text
     // on every reorder, even when nobody is tapping.
     .row > button {

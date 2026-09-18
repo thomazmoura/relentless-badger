@@ -2,13 +2,10 @@ package com.relentlessbadger.app.ui
 
 import android.os.SystemClock
 
-/** How long a task row takes to slide into its new slot. */
-const val ROW_MOVE_ANIMATION_MILLIS = 300
-
 /**
- * How long taps on task rows are swallowed after one moves. Longer than the
- * slide itself: a tap already on its way when the row moved lands a beat after
- * the list has settled, and it was aimed at whatever used to be there.
+ * How long taps on task rows are swallowed after one moves. A tap is already on
+ * its way when the order changes: it lands a beat later, aimed at whatever used
+ * to hold that slot.
  */
 const val ROW_MOVE_COOLDOWN_MILLIS = 600L
 
@@ -31,7 +28,7 @@ fun rowKeys(activeIds: List<String>, scheduledIds: List<String>): List<String> =
 /**
  * Makes a tap a no-op while the rows are still moving. Rows reorder on their own
  * — a nag fires, a sync lands, a start time passes — and without this a tap aimed
- * at one task lands on whichever task just slid into its place.
+ * at one task lands on whichever task just took its place.
  *
  * Only a row that stays on screen but changes slot counts as a move: the first
  * list shown, a countdown tick that re-renders the same order, or a row dropping
