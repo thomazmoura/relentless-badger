@@ -42,6 +42,25 @@ describe('BadgerStore', () => {
     expect(driver.getItem(KEYS.version)).toBe(String(SCHEMA_VERSION));
   });
 
+  it('keeps a version 1 device on Calendar after Today was inserted before it', () => {
+    const driver = new MemoryStorageDriver();
+    driver.setItem(KEYS.version, '1');
+    driver.setItem(KEYS.ui, JSON.stringify({ tab: 1, showCancelledInCalendar: true }));
+
+    const store = new BadgerStore(driver);
+
+    expect(store.currentUi().tab, 'Calendar moved from index 1 to 2').toBe(2);
+    expect(store.currentUi().showCancelledInCalendar).toBe(true);
+  });
+
+  it('leaves a version 1 device on Tasks where it was', () => {
+    const driver = new MemoryStorageDriver();
+    driver.setItem(KEYS.version, '1');
+    driver.setItem(KEYS.ui, JSON.stringify({ tab: 0, showCancelledInCalendar: false }));
+
+    expect(new BadgerStore(driver).currentUi().tab).toBe(0);
+  });
+
   it('reads rows written by a previous session', async () => {
     const driver = new MemoryStorageDriver();
     driver.setItem(KEYS.version, String(SCHEMA_VERSION));

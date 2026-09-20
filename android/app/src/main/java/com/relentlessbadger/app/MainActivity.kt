@@ -20,6 +20,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +44,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import com.relentlessbadger.app.notify.Notifications
 import com.relentlessbadger.app.ui.AppViewModel
 import com.relentlessbadger.app.ui.CalendarScreen
+import com.relentlessbadger.app.ui.DailyOverviewScreen
 import com.relentlessbadger.app.ui.MainScreen
 import com.relentlessbadger.app.ui.SettingsScreen
 import com.relentlessbadger.app.ui.SignInScreen
@@ -106,6 +108,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Tasks("Tasks", Icons.Filled.Checklist),
+    Today("Today", Icons.Filled.Today),
     Calendar("Calendar", Icons.Filled.CalendarMonth),
 }
 
@@ -183,6 +186,7 @@ private fun App(
                         onOpenSettings = { showSettings = true },
                         requestNotificationPermission = requestNotificationPermission,
                     )
+                    Tab.Today -> DailyOverviewScreen(viewModel)
                     Tab.Calendar -> CalendarScreen(viewModel)
                 }
             }

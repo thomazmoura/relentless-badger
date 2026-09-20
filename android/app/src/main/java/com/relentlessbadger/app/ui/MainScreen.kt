@@ -804,6 +804,18 @@ internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
         .format(if (use24Hour) dateTimeFormatter24 else dateTimeFormatter12)
 
+private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
+private val timeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/** "3:05 PM" or "15:05" — the same instant as [formatDateTime], without the date. */
+internal fun formatTimeOfDay(
+    epochMillis: Long,
+    use24Hour: Boolean,
+    zone: ZoneId = ZoneId.systemDefault(),
+): String =
+    Instant.ofEpochMilli(epochMillis).atZone(zone)
+        .format(if (use24Hour) timeFormatter24 else timeFormatter12)
+
 @Composable
 private fun TaskRow(
     task: OpenTaskEntity,

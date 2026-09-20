@@ -5,9 +5,11 @@ import { AppState } from '../../core/app-state';
 import { BadgerStoreService } from '../../core/store.service';
 import { CalendarPage } from '../calendar/calendar-page';
 import { TasksPage } from '../tasks/tasks-page';
+import { TodayPage } from '../today/today-page';
 
 const TABS = [
   { label: 'Tasks', icon: 'checklist' },
+  { label: 'Today', icon: 'today' },
   { label: 'Calendar', icon: 'calendar_month' },
 ] as const;
 
@@ -15,12 +17,12 @@ const TABS = [
 const SWIPE_THRESHOLD_PX = 60;
 
 /**
- * Tasks and Calendar, swipeable and with a bottom bar. The selected tab is
+ * Tasks, Today and Calendar, swipeable and with a bottom bar. The selected tab is
  * remembered on the device, so coming back from Settings lands where you were.
  */
 @Component({
   selector: 'app-shell-page',
-  imports: [MatButtonModule, MatIconModule, CalendarPage, TasksPage],
+  imports: [MatButtonModule, MatIconModule, CalendarPage, TasksPage, TodayPage],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -29,10 +31,16 @@ const SWIPE_THRESHOLD_PX = 60;
       (pointerup)="onPointerUp($event)"
       (pointercancel)="swipeStart = null"
     >
-      @if (tab() === 0) {
-        <app-tasks-page />
-      } @else {
-        <app-calendar-page />
+      @switch (tab()) {
+        @case (0) {
+          <app-tasks-page />
+        }
+        @case (1) {
+          <app-today-page />
+        }
+        @default {
+          <app-calendar-page />
+        }
       }
     </div>
 

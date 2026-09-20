@@ -21,7 +21,7 @@ import { isQuotaExceeded, StorageDriver } from './storage';
  * the main thread.
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const KEYS = {
   version: 'badger.v',
@@ -65,6 +65,23 @@ const HISTORY_RETENTION_MILLIS = 24 * 30 * 24 * 60 * 60 * 1000;
 const MIGRATIONS: Record<number, (driver: StorageDriver) => void> = {
   // 0 -> 1: the first versioned schema. Anything already present was written by
   // this same shape during development, so there is nothing to rewrite.
+
+  // 1 -> 2: Today was inserted between Tasks and Calendar, so the stored tab
+  // index no longer means what it did. Without this, anyone left on Calendar
+  // would silently come back to the new screen instead.
+  1: (driver) => {
+    const raw = driver.getItem(KEYS.ui);
+    if (raw === null) return;
+    try {
+      const ui = JSON.parse(raw) as Partial<UiState>;
+      if (ui.tab === 1) {
+        driver.setItem(KEYS.ui, JSON.stringify({ ...ui, tab: 2 }));
+      }
+    } catch {
+      // Unreadable UI state is not worth failing a migration over; the loader
+      // falls back to EMPTY_UI anyway.
+    }
+  },
 };
 
 export class BadgerStore {

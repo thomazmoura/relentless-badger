@@ -30,6 +30,21 @@ export function formatDateTime(
   return `${date}, ${hour12}:${pad2(p.minute)} ${suffix}`;
 }
 
+/** "3:05 PM" or "15:05" — the same instant as formatDateTime, without the date. */
+export function formatTimeOfDay(
+  epochMillis: number,
+  use24Hour: boolean,
+  zone: string = systemZone(),
+): string {
+  const p = partsAt(epochMillis, zone);
+  if (use24Hour) {
+    return `${pad2(p.hour)}:${pad2(p.minute)}`;
+  }
+  const suffix = p.hour < 12 ? 'AM' : 'PM';
+  const hour12 = p.hour % 12 === 0 ? 12 : p.hour % 12;
+  return `${hour12}:${pad2(p.minute)} ${suffix}`;
+}
+
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
 }
