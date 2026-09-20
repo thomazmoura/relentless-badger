@@ -1,10 +1,12 @@
 package com.relentlessbadger.app.data
 
+import com.relentlessbadger.app.db.CompletedTaskEntity
 import com.relentlessbadger.app.db.OpenTaskEntity
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
@@ -40,8 +42,33 @@ class DailyOverviewTest {
         seriesId = recurrence?.let { id },
     )
 
+    private fun completedTask(
+        id: String = "done",
+        title: String = "done",
+        completedAtMillis: Long,
+        cancelled: Boolean = false,
+        seriesId: String? = null,
+    ) = CompletedTaskEntity(id, title, completedAtMillis, seriesId, cancelled)
+
+    /** The day [now] falls on, where the overview splits into now and later. */
     private fun overview(vararg tasks: OpenTaskEntity) =
-        buildDailyOverview(tasks.toList(), now, zone)
+        buildDailyOverview(tasks.toList(), emptyList(), today, now, includeConcluded = false, zone = zone)
+
+    private fun overviewOf(
+        date: LocalDate,
+        openTasks: List<OpenTaskEntity> = emptyList(),
+        completed: List<CompletedTaskEntity> = emptyList(),
+        includeConcluded: Boolean = true,
+    ) = buildDailyOverview(openTasks, completed, date, now, includeConcluded, zone)
+
+    private val today = LocalDate.of(2026, 7, 15)
+
+    /** The items of [kind], or an empty list when the section isn't on screen. */
+    private fun DailyOverview.items(kind: OverviewSectionKind) =
+        sections.firstOrNull { it.kind == kind }?.items.orEmpty()
+
+    private val DailyOverview.now get() = items(OverviewSectionKind.NOW)
+    private val DailyOverview.later get() = items(OverviewSectionKind.LATER)
 
     @Test
     fun `a task whose start has passed is nagging now`() {
@@ -151,5 +178,114 @@ class DailyOverviewTest {
         val result = overview(openTask(firstWarningAtMillis = at(2026, 7, 15, 23, 59)))
 
         assertEquals(1, result.later.size)
+    }
+
+    // --- Other days ---------------------------------------------------------
+
+    @Test
+    fun `a past day shows a still-open task as overdue`() {
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 13),
+            openTasks = listOf(openTask(firstWarningAtMillis = at(2026, 7, 13, 9, 0))),
+        )
+
+        assertEquals(listOf("task"), result.items(OverviewSectionKind.OVERDUE).map { it.title })
+        assertTrue(
+            "now and later are today's question",
+            result.items(OverviewSectionKind.NOW).isEmpty() && result.items(OverviewSectionKind.LATER).isEmpty(),
+        )
+    }
+
+    @Test
+    fun `a task left over from a different day is not that day's debt`() {
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 13),
+            openTasks = listOf(openTask(firstWarningAtMillis = at(2026, 7, 14, 9, 0))),
+        )
+
+        assertTrue(result.isEmpty)
+    }
+
+    @Test
+    fun `a past day reports what was completed on it`() {
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 13),
+            completed = listOf(completedTask(completedAtMillis = at(2026, 7, 13, 16, 40))),
+        )
+
+        assertEquals(listOf("done"), result.items(OverviewSectionKind.DONE).map { it.title })
+        assertEquals(at(2026, 7, 13, 16, 40), result.items(OverviewSectionKind.DONE).single().atMillis)
+    }
+
+    @Test
+    fun `a cancellation is never reported as done`() {
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 13),
+            completed = listOf(completedTask(completedAtMillis = at(2026, 7, 13, 16, 40), cancelled = true)),
+        )
+
+        assertTrue("a cancellation must not read as an accomplishment", result.isEmpty)
+    }
+
+    @Test
+    fun `completions stay out until they are asked for`() {
+        val completed = listOf(completedTask(completedAtMillis = at(2026, 7, 13, 16, 40)))
+
+        assertTrue(
+            overviewOf(LocalDate.of(2026, 7, 13), completed = completed, includeConcluded = false).isEmpty,
+        )
+        assertFalse(overviewOf(LocalDate.of(2026, 7, 13), completed = completed).isEmpty)
+    }
+
+    @Test
+    fun `today can show its completions alongside what is still owed`() {
+        val result = overviewOf(
+            today,
+            openTasks = listOf(openTask(firstWarningAtMillis = at(2026, 7, 15, 9, 12))),
+            completed = listOf(completedTask(completedAtMillis = at(2026, 7, 15, 10, 0))),
+        )
+
+        assertEquals(
+            listOf(OverviewSectionKind.NOW, OverviewSectionKind.DONE),
+            result.sections.map { it.kind },
+        )
+    }
+
+    @Test
+    fun `a future day shows what is scheduled, never what is nagging`() {
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 17),
+            openTasks = listOf(openTask(firstWarningAtMillis = at(2026, 7, 17, 8, 0))),
+        )
+
+        assertEquals(
+            listOf(OverviewSectionKind.SCHEDULED),
+            result.sections.map { it.kind },
+        )
+    }
+
+    @Test
+    fun `a future day expands a repeating series onto its own occurrence`() {
+        // Anchored on Wednesday the 15th, so the series lands on the 22nd — a
+        // day the current occurrence says nothing about.
+        val result = overviewOf(
+            LocalDate.of(2026, 7, 22),
+            openTasks = listOf(
+                openTask(
+                    firstWarningAtMillis = at(2026, 7, 15, 18, 0),
+                    recurrence = Recurrence(1, RecurUnit.WEEKS, daysOfWeek = 1 shl 2),
+                ),
+            ),
+        )
+
+        val scheduled = result.items(OverviewSectionKind.SCHEDULED)
+        assertEquals(1, scheduled.size)
+        assertEquals(at(2026, 7, 22, 18, 0), scheduled.single().atMillis)
+        assertTrue(scheduled.single().recurring)
+    }
+
+    @Test
+    fun `a day with nothing on it has no sections at all`() {
+        assertTrue(overviewOf(LocalDate.of(2026, 7, 13)).isEmpty)
     }
 }

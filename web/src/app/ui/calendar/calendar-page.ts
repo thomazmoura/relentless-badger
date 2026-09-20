@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatDividerModule } from '@angular/material/divider';
@@ -6,7 +7,12 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
 import { CalendarEntry } from '../../core/domain/calendar-entries';
-import { formatDateTime, prefers24Hour, shortWeekdayNames } from '../../core/domain/format';
+import {
+  formatDateTime,
+  formatDayTitle,
+  prefers24Hour,
+  shortWeekdayNames,
+} from '../../core/domain/format';
 import {
   atDay,
   dateAt,
@@ -78,6 +84,9 @@ interface DayCell {
 
         <div class="selected-day">
           <span class="date">{{ selectedLabel() }}</span>
+          <button matIconButton aria-label="Open day overview" (click)="openDayOverview()">
+            <mat-icon>today</mat-icon>
+          </button>
           <mat-chip-listbox hideSingleSelectionIndicator>
             <mat-chip-option
               [selected]="state.showCancelledInCalendar()"
@@ -235,6 +244,7 @@ interface DayCell {
 })
 export class CalendarPage {
   readonly state = inject(AppState);
+  private readonly router = inject(Router);
   readonly weekdayNames = shortWeekdayNames('narrow');
   readonly use24Hour = prefers24Hour();
   readonly formatDateTime = formatDateTime;
@@ -248,15 +258,12 @@ export class CalendarPage {
     }).format(Date.UTC(month.year, month.month - 1, 1));
   });
 
-  readonly selectedLabel = computed(() => {
-    const date = this.state.selectedCalendarDate();
-    return new Intl.DateTimeFormat(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'UTC',
-    }).format(Date.UTC(date.year, date.month - 1, date.day));
-  });
+  readonly selectedLabel = computed(() => formatDayTitle(this.state.selectedCalendarDate()));
+
+  /** The same digest the Today tab shows, pointed at the day on screen. */
+  protected openDayOverview(): void {
+    void this.router.navigate(['/day', dateKey(this.state.selectedCalendarDate())]);
+  }
 
   readonly cells = computed<DayCell[]>(() => {
     const month = this.state.calendarMonth();

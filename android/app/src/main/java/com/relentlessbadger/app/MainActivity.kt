@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -147,6 +148,14 @@ private fun App(
             session = session!!,
             onBack = { showSettings = false },
         )
+
+        // Above the Scaffold rather than over it, so the pager stops composing
+        // the Today tab while a second overview is on screen.
+        viewModel.dayOverviewDate != null -> {
+            val close = { viewModel.dayOverviewDate = null }
+            BackHandler(onBack = close)
+            DailyOverviewScreen(viewModel, viewModel.dayOverviewDate, onBack = close)
+        }
 
         else -> Scaffold(
             bottomBar = {

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -99,6 +100,7 @@ import com.relentlessbadger.app.db.OpenTaskEntity
 import kotlinx.coroutines.delay
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -256,11 +258,30 @@ fun MainScreen(
             }
 
             // Keyed on the start time, not nextFire, so a snoozed task
-            // doesn't jump into "Scheduled".
-            val (scheduled, active) = tasks.partition {
-                (it.firstWarningAtMillis ?: 0L) > nowMillis
+            // doesn't jump into "Scheduled". Today's remaining load sits right
+            // under the nagging rows; everything past midnight is pushed below
+            // it, where it can't be mistaken for something still owed today.
+            val endOfToday = LocalDate.now()
+                .plusDays(1)
+                .atStartOfDay(ZoneId.systemDefault())
+                .toInstant()
+                .toEpochMilli()
+            val active = mutableListOf<OpenTaskEntity>()
+            val scheduledToday = mutableListOf<OpenTaskEntity>()
+            val scheduledLater = mutableListOf<OpenTaskEntity>()
+            tasks.forEach { task ->
+                val start = task.firstWarningAtMillis ?: 0L
+                when {
+                    start <= nowMillis -> active += task
+                    start < endOfToday -> scheduledToday += task
+                    else -> scheduledLater += task
+                }
             }
-            val keys = rowKeys(active.map { it.id }, scheduled.map { it.id })
+            val keys = rowKeys(
+                active.map { it.id },
+                scheduledToday.map { it.id },
+                scheduledLater.map { it.id },
+            )
             // Rows are keyed so each one's state stays with its task, but LazyColumn
             // anchors its scroll on the first visible item's key — the viewport
             // would chase whichever row moved, and rows move on their own as a
@@ -305,61 +326,47 @@ fun MainScreen(
                 }
             } else {
                 LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                    items(active, key = { it.id }) { task ->
-                        Column {
-                            TaskRow(
-                                task = task,
-                                scheduled = false,
-                                nowMillis = nowMillis,
-                                pauseUntilMillis = pauseUntilMillis,
-                                quietHours = quietHours,
-                                use24Hour = use24Hour,
-                                waitMinutes = waitMinutes,
-                                canAct = movementGuard::allowsTap,
-                                tapsLocked = tapsLocked,
-                                onDone = { viewModel.completeTask(task.id) },
-                                onDonePreviously = { viewModel.donePreviouslyTask = task },
-                                onCancel = { viewModel.cancelTask(task.id) },
-                                onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
-                                onPickDateTime = { viewModel.exactWaitTask = task },
-                                onAdvance = {},
-                                onEdit = { viewModel.beginEditSchedule(task) },
-                            )
-                            HorizontalDivider()
-                        }
+                    taskRows(
+                        tasks = active,
+                        scheduled = false,
+                        viewModel = viewModel,
+                        nowMillis = nowMillis,
+                        pauseUntilMillis = pauseUntilMillis,
+                        quietHours = quietHours,
+                        use24Hour = use24Hour,
+                        waitMinutes = waitMinutes,
+                        movementGuard = movementGuard,
+                        tapsLocked = tapsLocked,
+                    )
+                    if (scheduledToday.isNotEmpty()) {
+                        item(key = SCHEDULED_TODAY_HEADER_KEY) { TaskSectionHeader("Scheduled (Today)") }
+                        taskRows(
+                            tasks = scheduledToday,
+                            scheduled = true,
+                            viewModel = viewModel,
+                            nowMillis = nowMillis,
+                            pauseUntilMillis = pauseUntilMillis,
+                            quietHours = quietHours,
+                            use24Hour = use24Hour,
+                            waitMinutes = waitMinutes,
+                            movementGuard = movementGuard,
+                            tapsLocked = tapsLocked,
+                        )
                     }
-                    if (scheduled.isNotEmpty()) {
-                        item(key = SCHEDULED_HEADER_KEY) {
-                            Text(
-                                "Scheduled",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
-                            )
-                        }
-                        items(scheduled, key = { it.id }) { task ->
-                            Column {
-                                TaskRow(
-                                    task = task,
-                                    scheduled = true,
-                                    nowMillis = nowMillis,
-                                    pauseUntilMillis = pauseUntilMillis,
-                                    quietHours = quietHours,
-                                    use24Hour = use24Hour,
-                                    waitMinutes = waitMinutes,
-                                    canAct = movementGuard::allowsTap,
-                                    tapsLocked = tapsLocked,
-                                    onDone = { viewModel.completeTask(task.id) },
-                                    onDonePreviously = { viewModel.donePreviouslyTask = task },
-                                    onCancel = { viewModel.cancelTask(task.id) },
-                                    onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
-                                    onPickDateTime = { viewModel.exactWaitTask = task },
-                                    onAdvance = { viewModel.advanceTask(task.id) },
-                                    onEdit = { viewModel.beginEditSchedule(task) },
-                                )
-                                HorizontalDivider()
-                            }
-                        }
+                    if (scheduledLater.isNotEmpty()) {
+                        item(key = SCHEDULED_LATER_HEADER_KEY) { TaskSectionHeader("Scheduled (Later)") }
+                        taskRows(
+                            tasks = scheduledLater,
+                            scheduled = true,
+                            viewModel = viewModel,
+                            nowMillis = nowMillis,
+                            pauseUntilMillis = pauseUntilMillis,
+                            quietHours = quietHours,
+                            use24Hour = use24Hour,
+                            waitMinutes = waitMinutes,
+                            movementGuard = movementGuard,
+                            tapsLocked = tapsLocked,
+                        )
                     }
                 }
             }
@@ -787,6 +794,58 @@ private fun DateTimePickerFlow(
 }
 
 /**
+ * One section's worth of rows. The three sections differ only in their header
+ * and in whether the row reads as scheduled, so they share this.
+ */
+private fun LazyListScope.taskRows(
+    tasks: List<OpenTaskEntity>,
+    scheduled: Boolean,
+    viewModel: AppViewModel,
+    nowMillis: Long,
+    pauseUntilMillis: Long?,
+    quietHours: List<QuietRange>,
+    use24Hour: Boolean,
+    waitMinutes: List<Int>,
+    movementGuard: RowMovementGuard,
+    tapsLocked: Boolean,
+) {
+    items(tasks, key = { it.id }) { task ->
+        Column {
+            TaskRow(
+                task = task,
+                scheduled = scheduled,
+                nowMillis = nowMillis,
+                pauseUntilMillis = pauseUntilMillis,
+                quietHours = quietHours,
+                use24Hour = use24Hour,
+                waitMinutes = waitMinutes,
+                canAct = movementGuard::allowsTap,
+                tapsLocked = tapsLocked,
+                onDone = { viewModel.completeTask(task.id) },
+                onDonePreviously = { viewModel.donePreviouslyTask = task },
+                onCancel = { viewModel.cancelTask(task.id) },
+                onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                onPickDateTime = { viewModel.exactWaitTask = task },
+                // Only a task that has not started yet can be brought forward.
+                onAdvance = { if (scheduled) viewModel.advanceTask(task.id) },
+                onEdit = { viewModel.beginEditSchedule(task) },
+            )
+            HorizontalDivider()
+        }
+    }
+}
+
+@Composable
+private fun TaskSectionHeader(label: String) {
+    Text(
+        label,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 16.dp, bottom = 4.dp),
+    )
+}
+
+/**
  * The instant's local calendar day, restated as UTC midnight — the currency the
  * M3 DatePicker deals in.
  */
@@ -803,6 +862,11 @@ private val dateTimeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern
 internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean): String =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
         .format(if (use24Hour) dateTimeFormatter24 else dateTimeFormatter12)
+
+private val dayTitleFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+
+/** "Friday, Sep 18" — how a day names itself once it isn't today. */
+internal fun formatDayTitle(date: java.time.LocalDate): String = date.format(dayTitleFormatter)
 
 private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 private val timeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")

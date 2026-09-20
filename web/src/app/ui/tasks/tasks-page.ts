@@ -18,29 +18,33 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { NgTemplateOutlet } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
 import { prefers24Hour } from '../../core/domain/format';
 import { OpenTask } from '../../core/domain/models';
+import { plusDays, startOfDay } from '../../core/domain/time';
 import { DateTimePickerDialog } from '../dialogs/date-time-picker-dialog';
 import { EditScheduleDialog, EditScheduleResult } from '../dialogs/edit-schedule-dialog';
 import { WaitOptionsDialog, WaitOptionsResult } from '../dialogs/wait-options-dialog';
 import { QuickAdd } from './quick-add';
-import { RowMovementGuard, SCHEDULED_HEADER_KEY, rowKeys } from './row-movement-guard';
+import { RowMovementGuard, rowKeys } from './row-movement-guard';
 import { TaskRow } from './task-row';
 
 /** The event types that start or complete an action on a row. */
 const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
 
 /**
- * The list of open tasks, split into the ones already nagging and the ones
- * still waiting to start. The split keys off the start time rather than the
- * live nag time, so snoozing a task doesn't make it jump sections.
+ * The list of open tasks, split into the ones already nagging, the rest of
+ * today's load, and everything that lands after midnight. The splits key off
+ * the start time rather than the live nag time, so snoozing a task doesn't make
+ * it jump sections.
  */
 @Component({
   selector: 'app-tasks-page',
   imports: [
+    NgTemplateOutlet,
     MatButtonModule,
     MatCardModule,
     MatDividerModule,
@@ -119,30 +123,47 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
                 <mat-divider />
               </div>
             }
-            @if (scheduled().length > 0) {
-              <p class="section">Scheduled</p>
-              @for (task of scheduled(); track task.id) {
-                <div>
-                  <app-task-row
-                    [task]="task"
-                    [nowMillis]="state.nowMillis()"
-                    [use24Hour]="use24Hour"
-                    [waitMinutes]="state.session().waitMinutes"
-                    [tapsLocked]="tapsLocked()"
-                    (edit)="editSchedule(task)"
-                    (done)="state.completeTask(task.id)"
-                    (donePreviously)="donePreviously(task)"
-                    (cancelTask)="state.cancelTask(task.id)"
-                    (advance)="state.advanceTask(task.id)"
-                  />
-                  <mat-divider />
-                </div>
-              }
-            }
+            <ng-container
+              *ngTemplateOutlet="
+                scheduledSection;
+                context: { label: 'Scheduled (Today)', tasks: scheduledToday() }
+              "
+            />
+            <ng-container
+              *ngTemplateOutlet="
+                scheduledSection;
+                context: { label: 'Scheduled (Later)', tasks: scheduledLater() }
+              "
+            />
           </div>
         }
       </div>
     </div>
+
+    <!-- The two scheduled sections differ only in their header, so they share
+         their rows; the active section's rows differ in what they afford. -->
+    <ng-template #scheduledSection let-label="label" let-tasks="tasks">
+      @if (tasks.length > 0) {
+        <p class="section">{{ label }}</p>
+        @for (task of tasks; track task.id) {
+          <div>
+            <app-task-row
+              [task]="task"
+              [nowMillis]="state.nowMillis()"
+              [use24Hour]="use24Hour"
+              [waitMinutes]="state.session().waitMinutes"
+              [tapsLocked]="tapsLocked()"
+              (edit)="editSchedule(task)"
+              (done)="state.completeTask(task.id)"
+              (donePreviously)="donePreviously(task)"
+              (cancelTask)="state.cancelTask(task.id)"
+              (advance)="state.advanceTask(task.id)"
+            />
+            <mat-divider />
+          </div>
+        }
+      }
+    </ng-template>
   `,
   styles: `
     :host {
@@ -205,15 +226,21 @@ export class TasksPage {
 
   private readonly partitioned = computed(() => {
     const now = this.state.nowMillis();
-    const scheduled: OpenTask[] = [];
+    const endOfToday = startOfDay(plusDays(this.state.today(), 1), this.state.zone);
     const active: OpenTask[] = [];
+    const scheduledToday: OpenTask[] = [];
+    const scheduledLater: OpenTask[] = [];
     for (const task of this.state.openTasks()) {
-      ((task.firstWarningAtMillis ?? 0) > now ? scheduled : active).push(task);
+      const start = task.firstWarningAtMillis ?? 0;
+      if (start <= now) active.push(task);
+      else if (start < endOfToday) scheduledToday.push(task);
+      else scheduledLater.push(task);
     }
-    return { scheduled, active };
+    return { active, scheduledToday, scheduledLater };
   });
-  readonly scheduled = computed(() => this.partitioned().scheduled);
   readonly active = computed(() => this.partitioned().active);
+  readonly scheduledToday = computed(() => this.partitioned().scheduledToday);
+  readonly scheduledLater = computed(() => this.partitioned().scheduledLater);
 
   constructor() {
     effect(() => {
@@ -266,7 +293,8 @@ export class TasksPage {
     afterRenderEffect(() => {
       const keys = rowKeys(
         this.active().map((task) => task.id),
-        this.scheduled().map((task) => task.id),
+        this.scheduledToday().map((task) => task.id),
+        this.scheduledLater().map((task) => task.id),
       );
       if (this.movementGuard.observe(keys) && !this.movementGuard.allowsTap()) this.holdTapLock();
     });

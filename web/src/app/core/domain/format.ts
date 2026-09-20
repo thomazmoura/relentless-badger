@@ -1,5 +1,5 @@
 import { Recurrence } from './models';
-import { dateAt, dayOfWeek, partsAt, systemZone } from './time';
+import { dateAt, dayOfWeek, LocalDate, partsAt, systemZone } from './time';
 
 /**
  * User-facing strings, kept identical to the Android app's so the two clients
@@ -70,6 +70,17 @@ export function shortWeekdayNames(style: 'short' | 'narrow' = 'short'): string[]
   const formatter = new Intl.DateTimeFormat(undefined, { weekday: style, timeZone: 'UTC' });
   // 2024-01-01 was a Monday.
   return Array.from({ length: 7 }, (_, i) => formatter.format(Date.UTC(2024, 0, 1 + i)));
+}
+
+/** "Friday, Sep 18" — how a day names itself once it isn't today. */
+export function formatDayTitle(date: LocalDate): string {
+  // UTC, because the date carries no zone of its own to render it in.
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(Date.UTC(date.year, date.month - 1, date.day));
 }
 
 /** "every day", "every 3 days", "every week", "every 2 weeks · Mon, Wed, Fri". */

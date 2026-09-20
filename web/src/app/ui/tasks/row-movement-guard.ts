@@ -14,14 +14,26 @@ export const ROW_LOCKED_BUTTON_ALPHA = 0.38;
 /** How long the buttons take to fade in and out of the locked look. */
 export const ROW_LOCK_FADE_MILLIS = 150;
 
-/** The "Scheduled" section header's slot in the row sequence. */
-export const SCHEDULED_HEADER_KEY = 'scheduled-header';
+/** The "Scheduled (Today)" section header's slot in the row sequence. */
+export const SCHEDULED_TODAY_HEADER_KEY = 'scheduled-today-header';
 
-/** The list's rows top to bottom, as the keys the list and the guard see. */
-export function rowKeys(activeIds: readonly string[], scheduledIds: readonly string[]): string[] {
-  return scheduledIds.length === 0
-    ? [...activeIds]
-    : [...activeIds, SCHEDULED_HEADER_KEY, ...scheduledIds];
+/** The "Scheduled (Later)" section header's slot in the row sequence. */
+export const SCHEDULED_LATER_HEADER_KEY = 'scheduled-later-header';
+
+/**
+ * The list's rows top to bottom, as the keys the list and the guard see. A
+ * header only takes a slot when its section is on screen, so an emptying
+ * section shifts the rows below it exactly as the list does.
+ */
+export function rowKeys(
+  activeIds: readonly string[],
+  scheduledTodayIds: readonly string[],
+  scheduledLaterIds: readonly string[],
+): string[] {
+  const keys = [...activeIds];
+  if (scheduledTodayIds.length > 0) keys.push(SCHEDULED_TODAY_HEADER_KEY, ...scheduledTodayIds);
+  if (scheduledLaterIds.length > 0) keys.push(SCHEDULED_LATER_HEADER_KEY, ...scheduledLaterIds);
+  return keys;
 }
 
 /**

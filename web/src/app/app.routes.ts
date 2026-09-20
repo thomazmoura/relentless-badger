@@ -15,6 +15,11 @@ export const routes: Routes = [
     loadComponent: () => import('./ui/shell/shell-page').then((m) => m.ShellPage),
   },
   {
+    path: 'day/:date',
+    canActivate: [signedIn],
+    loadComponent: () => import('./ui/today/day-overview-page').then((m) => m.DayOverviewPage),
+  },
+  {
     path: 'settings',
     canActivate: [signedIn],
     loadComponent: () => import('./ui/settings/settings-page').then((m) => m.SettingsPage),

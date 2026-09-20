@@ -18,12 +18,32 @@ const val ROW_LOCKED_BUTTON_ALPHA = 0.38f
 /** How long the buttons take to fade in and out of the locked look. */
 const val ROW_LOCK_FADE_MILLIS = 150
 
-/** The "Scheduled" section header's slot in the row sequence. */
-const val SCHEDULED_HEADER_KEY = "scheduled-header"
+/** The "Scheduled (Today)" section header's slot in the row sequence. */
+const val SCHEDULED_TODAY_HEADER_KEY = "scheduled-today-header"
 
-/** The list's rows top to bottom, as the keys the lazy list and the guard see. */
-fun rowKeys(activeIds: List<String>, scheduledIds: List<String>): List<String> =
-    if (scheduledIds.isEmpty()) activeIds else activeIds + SCHEDULED_HEADER_KEY + scheduledIds
+/** The "Scheduled (Later)" section header's slot in the row sequence. */
+const val SCHEDULED_LATER_HEADER_KEY = "scheduled-later-header"
+
+/**
+ * The list's rows top to bottom, as the keys the lazy list and the guard see.
+ * A header only takes a slot when its section is on screen, so an emptying
+ * section shifts the rows below it exactly as the list does.
+ */
+fun rowKeys(
+    activeIds: List<String>,
+    scheduledTodayIds: List<String>,
+    scheduledLaterIds: List<String>,
+): List<String> = buildList {
+    addAll(activeIds)
+    if (scheduledTodayIds.isNotEmpty()) {
+        add(SCHEDULED_TODAY_HEADER_KEY)
+        addAll(scheduledTodayIds)
+    }
+    if (scheduledLaterIds.isNotEmpty()) {
+        add(SCHEDULED_LATER_HEADER_KEY)
+        addAll(scheduledLaterIds)
+    }
+}
 
 /**
  * Makes a tap a no-op while the rows are still moving. Rows reorder on their own

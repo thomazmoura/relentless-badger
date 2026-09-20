@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Today
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -147,11 +148,14 @@ fun CalendarScreen(viewModel: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    selectedDate.format(selectedDayFormatter),
+                    formatDayTitle(selectedDate),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
+                IconButton(onClick = { viewModel.dayOverviewDate = selectedDate }) {
+                    Icon(Icons.Filled.Today, contentDescription = "Open day overview")
+                }
                 FilterChip(
                     selected = showCancelled,
                     onClick = {
@@ -303,4 +307,3 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
 }
 
 private val monthTitleFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
-private val selectedDayFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")

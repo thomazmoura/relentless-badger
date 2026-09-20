@@ -107,13 +107,37 @@ class RowMovementGuardTest {
 
     @Test
     fun `a task starting moves across the scheduled header`() {
-        val before = rowKeys(listOf("a"), listOf("s1", "s2"))
-        val after = rowKeys(listOf("a", "s1"), listOf("s2"))
-        assertEquals(listOf("a", SCHEDULED_HEADER_KEY, "s1", "s2"), before)
+        val before = rowKeys(listOf("a"), listOf("s1", "s2"), emptyList())
+        val after = rowKeys(listOf("a", "s1"), listOf("s2"), emptyList())
+        assertEquals(listOf("a", SCHEDULED_TODAY_HEADER_KEY, "s1", "s2"), before)
         guard.observe(before)
 
         guard.observe(after)
 
         assertFalse(guard.allowsTap())
+    }
+
+    @Test
+    fun `a task crossing midnight moves across the later header`() {
+        val before = rowKeys(listOf("a"), emptyList(), listOf("l1", "l2"))
+        val after = rowKeys(listOf("a"), listOf("l1"), listOf("l2"))
+        guard.observe(before)
+
+        guard.observe(after)
+
+        assertFalse(guard.allowsTap())
+    }
+
+    @Test
+    fun `an empty section takes no slot, so the rows below it keep theirs`() {
+        val keys = rowKeys(listOf("a"), emptyList(), listOf("l1"))
+
+        assertEquals(listOf("a", SCHEDULED_LATER_HEADER_KEY, "l1"), keys)
+        guard.observe(keys)
+
+        // The same three rows re-rendered: nothing shifted, so taps stay live.
+        guard.observe(rowKeys(listOf("a"), emptyList(), listOf("l1")))
+
+        assertTrue(guard.allowsTap())
     }
 }

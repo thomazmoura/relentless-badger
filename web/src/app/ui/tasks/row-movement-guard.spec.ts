@@ -1,7 +1,8 @@
 import {
   ROW_MOVE_COOLDOWN_MILLIS,
   RowMovementGuard,
-  SCHEDULED_HEADER_KEY,
+  SCHEDULED_LATER_HEADER_KEY,
+  SCHEDULED_TODAY_HEADER_KEY,
   rowKeys,
 } from './row-movement-guard';
 
@@ -102,13 +103,32 @@ describe('RowMovementGuard', () => {
   });
 
   it('a task starting moves across the scheduled header', () => {
-    const before = rowKeys(['a'], ['s1', 's2']);
-    const after = rowKeys(['a', 's1'], ['s2']);
-    expect(before).toEqual(['a', SCHEDULED_HEADER_KEY, 's1', 's2']);
+    const before = rowKeys(['a'], ['s1', 's2'], []);
+    const after = rowKeys(['a', 's1'], ['s2'], []);
+    expect(before).toEqual(['a', SCHEDULED_TODAY_HEADER_KEY, 's1', 's2']);
     guard.observe(before);
 
     guard.observe(after);
 
     expect(guard.allowsTap()).toBe(false);
+  });
+
+  it('a task crossing midnight moves across the later header', () => {
+    guard.observe(rowKeys(['a'], [], ['l1', 'l2']));
+
+    guard.observe(rowKeys(['a'], ['l1'], ['l2']));
+
+    expect(guard.allowsTap()).toBe(false);
+  });
+
+  it('leaves an empty section no slot, so the rows below it keep theirs', () => {
+    const keys = rowKeys(['a'], [], ['l1']);
+    expect(keys).toEqual(['a', SCHEDULED_LATER_HEADER_KEY, 'l1']);
+    guard.observe(keys);
+
+    // The same three rows re-rendered: nothing shifted, so taps stay live.
+    guard.observe(rowKeys(['a'], [], ['l1']));
+
+    expect(guard.allowsTap()).toBe(true);
   });
 });

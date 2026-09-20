@@ -57,10 +57,7 @@ fun buildMonthEntries(
     for (task in openTasks) {
         val recurrence = task.recurrence()
         if (recurrence == null) {
-            // The effective first-nag time — not nextFireAtMillis, which
-            // drifts with snoozes and re-nags.
-            val at = task.firstWarningAtMillis
-                ?: (task.createdAtMillis + task.initialDelayMinutes * 60_000L)
+            val at = task.firstNagAtMillis()
             if (at in monthStart until monthEnd) {
                 entries += CalendarEntry(task.id, task.title, at, CalendarEntryKind.SCHEDULED, false)
             }

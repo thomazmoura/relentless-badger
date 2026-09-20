@@ -1,5 +1,6 @@
+import { firstNagAtMillis } from './daily-overview';
 import { CompletedTask, OpenTask, taskRecurrence } from './models';
-import { computeNextOccurrence, MINUTE_MILLIS } from './schedule';
+import { computeNextOccurrence } from './schedule';
 import {
   atDay,
   dateAt,
@@ -64,11 +65,7 @@ export function buildMonthEntries(
   for (const task of openTasks) {
     const recurrence = taskRecurrence(task);
     if (recurrence === null) {
-      // The effective first-nag time — not nextFireAtMillis, which drifts with
-      // snoozes and re-nags.
-      const at =
-        task.firstWarningAtMillis ??
-        task.createdAtMillis + task.initialDelayMinutes * MINUTE_MILLIS;
+      const at = firstNagAtMillis(task);
       if (at >= monthStart && at < monthEnd) {
         entries.push({
           taskId: task.id,

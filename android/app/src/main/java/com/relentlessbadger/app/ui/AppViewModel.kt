@@ -23,6 +23,7 @@ import com.relentlessbadger.app.db.CompletedTaskEntity
 import com.relentlessbadger.app.db.OpenTaskEntity
 import com.relentlessbadger.app.fuzzy.Fuzzy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -50,6 +51,22 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /** Cancelled tasks are history, but not achievements — opt in to see them. */
     var showCancelledInCalendar by mutableStateOf(false)
+
+    /** Day whose overview is open on top of the tabs, null when none is. */
+    var dayOverviewDate by mutableStateOf<LocalDate?>(null)
+
+    /**
+     * Completions on [date], for the day overview's optional "Done" section.
+     * Scoped to the one day rather than reusing [completedInMonth]: the Today
+     * tab's day need not fall in the month the calendar happens to be showing.
+     */
+    fun completedOnDay(date: LocalDate): Flow<List<CompletedTaskEntity>> {
+        val zone = ZoneId.systemDefault()
+        return container.repository.completedTasksBetween(
+            date.atStartOfDay(zone).toInstant().toEpochMilli(),
+            date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli(),
+        )
+    }
 
     fun showCalendarMonth(month: YearMonth) {
         calendarMonthFlow.value = month

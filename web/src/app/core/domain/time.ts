@@ -223,11 +223,28 @@ export function sameDate(a: LocalDate, b: LocalDate): boolean {
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
+/** LocalDate.compareTo — negative when `a` falls before `b`. */
+export function compareDates(a: LocalDate, b: LocalDate): number {
+  return toEpochDay(a) - toEpochDay(b);
+}
+
 /** Stable key for grouping/lookup by day, e.g. "2026-07-17". */
 export function dateKey(date: LocalDate): string {
   const mm = String(date.month).padStart(2, '0');
   const dd = String(date.day).padStart(2, '0');
   return `${date.year}-${mm}-${dd}`;
+}
+
+/**
+ * The inverse of [dateKey], null when the text is not one — a URL can carry
+ * anything, and a day that does not exist is the caller's to fall back from.
+ */
+export function parseDateKey(text: string): LocalDate | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return null;
+  const date = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  // Round-trips only for a real date: fromEpochDay normalises Feb 31 away.
+  return dateKey(fromEpochDay(toEpochDay(date))) === text ? date : null;
 }
 
 // --- ISO-8601 instants (the wire format) ------------------------------------

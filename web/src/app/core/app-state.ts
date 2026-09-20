@@ -18,6 +18,7 @@ import {
   dateAt,
   dateKey,
   LocalDate,
+  plusDays,
   plusMonths,
   sameYearMonth,
   startOfDay,
@@ -128,6 +129,35 @@ export class AppState {
 
   readonly selectedDayEntries = computed<CalendarEntry[]>(
     () => this.calendarEntries().get(dateKey(this.selectedCalendarDate())) ?? [],
+  );
+
+  // --- day overview --------------------------------------------------------
+
+  /**
+   * The day the overview shows, null while the Today tab has it — that one
+   * follows the clock, so it rolls over at midnight on its own.
+   */
+  readonly overviewDate = signal<LocalDate | null>(null);
+
+  /** The local date right now, re-derived each tick so it rolls over at midnight. */
+  readonly today = computed(() => dateAt(this.nowMillis(), this.zone));
+
+  private readonly shownOverviewDate = computed(() => this.overviewDate() ?? this.today());
+  private readonly overviewDayStart = computed(() =>
+    startOfDay(this.shownOverviewDate(), this.zone),
+  );
+  private readonly overviewDayEnd = computed(() =>
+    startOfDay(plusDays(this.shownOverviewDate(), 1), this.zone),
+  );
+
+  /**
+   * Completions on the day the overview shows, for its optional "Done"
+   * section. Scoped to the one day rather than reusing completedInMonth: the
+   * Today tab's day need not fall in the month the calendar is showing.
+   */
+  readonly completedOnOverviewDay: () => CompletedTask[] = this.repository.observeCompletedBetween(
+    this.overviewDayStart,
+    this.overviewDayEnd,
   );
 
   constructor() {
