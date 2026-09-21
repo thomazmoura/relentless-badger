@@ -39,3 +39,5 @@ both sides.
 - `./dev.sh` starts Postgres, the API and an emulator, then builds and installs
   the app. `./dev.sh down` stops everything.
 - Tests: `cd android && ./gradlew test`; `cd web && npm test`; `cd backend && dotnet test`.
+- Production is a Raspberry Pi: `deploy/publish.sh` ships the current tree (HTTPS gateway,
+  `/badger` + `/badger-api`), `deploy/backup.sh` dumps its database. See the README.

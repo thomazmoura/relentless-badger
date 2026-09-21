@@ -1,0 +1,26 @@
+# The Pi's HTTPS entry point: one nginx on 80/443 that routes URL paths to apps. It is its
+# own compose project (copied to ~/gateway by deploy/publish.sh) so other apps can share it —
+# each drops an nginx/sites/<app>.conf and attaches its containers to the external "gateway"
+# network. Certificates come from `tailscale cert` into ./certs.
+name: gateway
+
+services:
+  nginx:
+    image: nginx:alpine
+    container_name: gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    # A directory rather than single files: a publish replaces the files, and a single-file
+    # bind mount would keep pointing at the old, deleted one.
+    command: ["nginx", "-c", "/etc/nginx/gateway/nginx.conf", "-g", "daemon off;"]
+    volumes:
+      - ./nginx:/etc/nginx/gateway:ro
+      - ./certs:/etc/nginx/certs:ro
+    networks:
+      - gateway
+    restart: unless-stopped
+
+networks:
+  gateway:
+    external: true

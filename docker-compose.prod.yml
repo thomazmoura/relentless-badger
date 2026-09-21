@@ -1,8 +1,11 @@
-# Production deployment (e.g. a Raspberry Pi): PostgreSQL + the API in containers.
-# Copy .env.example to .env and fill it in, then:
+# Production deployment on a Raspberry Pi: PostgreSQL, the API and the web PWA, published
+# over HTTPS by the gateway in deploy/gateway (https://<pi>/badger and /badger-api).
+# deploy/publish.sh builds the images, ships them and runs this file; see the README.
 #
-#   docker compose -f docker-compose.prod.yml up -d --build   # build on this machine
-#   docker compose -f docker-compose.prod.yml up -d           # pull $API_IMAGE instead
+# The project name is pinned so the data volume is always relentlessbadger_pgdata, whatever
+# directory this file sits in on the Pi — a different name would mean a fresh, empty database.
+name: relentlessbadger
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -13,6 +16,8 @@ services:
       POSTGRES_DB: relentlessbadger
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Shared with the host so deploy/backup.sh's dumps land on the Pi's disk.
+      - ${BACKUP_DIR:-./backups}:/backups
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U badger -d relentlessbadger"]
       interval: 5s
@@ -22,7 +27,7 @@ services:
 
   api:
     build: ./backend
-    image: ${API_IMAGE:-relentlessbadger-api}
+    image: ${API_IMAGE:-relentlessbadger-api:latest}
     container_name: relentlessbadger-api
     environment:
       ASPNETCORE_ENVIRONMENT: Production
@@ -30,12 +35,26 @@ services:
       Jwt__Key: ${JWT_KEY:?set it in .env}
       Auth__GoogleClientId: ${GOOGLE_CLIENT_ID:-}
       Cors__AllowedOrigins__0: ${WEB_ORIGIN:-}
-    ports:
-      - "5000:5000"
+    # No published port: only the gateway reaches the API, as /badger-api.
+    networks:
+      - default
+      - gateway
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
 
+  web:
+    build: ./web
+    image: ${WEB_IMAGE:-relentlessbadger-web:latest}
+    container_name: relentlessbadger-web
+    networks:
+      - gateway
+    restart: unless-stopped
+
 volumes:
   pgdata:
+
+networks:
+  gateway:
+    external: true

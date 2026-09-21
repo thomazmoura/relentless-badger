@@ -17,3 +17,5 @@ android/captures/
 .DS_Store
 .dev/
 .env
+deploy/deploy.env
+backups/

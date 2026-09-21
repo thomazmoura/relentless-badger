@@ -152,27 +152,79 @@ Android schedules exact alarms that survive reboots and fire with the app closed
 
 Multiple open tabs elect a single leader, so a reminder is never shown twice.
 
-## Deploy the API with Docker (e.g. Raspberry Pi)
+## Deploy to a Raspberry Pi
 
-`backend/Dockerfile` builds a container image of the API for both `amd64` and `arm64`, and `docker-compose.prod.yml` runs it together with PostgreSQL. On the Pi (or any Docker host):
+`deploy/publish.sh` puts the current working tree on a Pi: PostgreSQL, the API and the web PWA, served over HTTPS on port 443 by a small nginx gateway:
 
-```bash
-git clone <this-repo> && cd RelentlessBadger
-cp .env.example .env        # then fill in POSTGRES_PASSWORD, JWT_KEY, GOOGLE_CLIENT_ID
-docker compose -f docker-compose.prod.yml up -d --build
-curl http://localhost:5000/health
+- `https://<pi>.ts.net/badger` — the web app
+- `https://<pi>.ts.net/badger-api` — the API (the Android app's server URL)
+
+The certificate comes from Tailscale, so the server is reachable (and trusted) from your tailnet devices only. Everything runs from your dev machine over ssh. The images are built locally for `arm64` (both Dockerfiles cross-compile, so no emulation is involved) and streamed to the Pi, which needs no toolchain and no registry.
+
+```
+tailnet ──443──▶ gateway (nginx, ~/gateway)
+                 ├─ /badger/      → relentlessbadger-web  (static PWA)
+                 └─ /badger-api/  → relentlessbadger-api  → relentlessbadger-db (volume relentlessbadger_pgdata)
 ```
 
-`--build` compiles natively on the host (arm64 on a Pi), and migrations apply automatically on startup. Postgres is not exposed outside the compose network; only the API's port 5000 is published.
+### One-time setup
 
-Alternatively, build the multi-arch image on a faster machine and push it to a registry — the SDK stage cross-compiles, so no emulation is involved:
+On the Pi (64-bit Raspberry Pi OS):
+
+1. Install Docker with the compose plugin and add your user to the `docker` group.
+2. Install Tailscale and join the tailnet. In the admin console, enable **MagicDNS** and **HTTPS certificates**, then allow your user to request certificates: `sudo tailscale set --operator=$USER`.
+3. Create the server secrets: `mkdir -p ~/relentlessbadger` and write `~/relentlessbadger/.env` from [`.env.example`](.env.example) (`POSTGRES_PASSWORD`, `JWT_KEY`, `GOOGLE_CLIENT_ID`). This file never leaves the Pi.
+
+On your dev machine:
+
+1. Get key-based ssh to the Pi working (`ssh <pi>.ts.net` without a password prompt), and join the same tailnet.
+2. Install Docker with `buildx`.
+3. `cp deploy/deploy.env.example deploy/deploy.env` and set at least `PI_HOST` and `GOOGLE_WEB_CLIENT_ID`. Every setting can also be exported instead, and exports win over the file.
+4. In the Google Cloud Console, add `https://<pi>.ts.net` to the Web client's *Authorized JavaScript origins*. The dev sign-in bypass doesn't exist in Production, so Google sign-in has to work.
+
+### Publish
 
 ```bash
-docker buildx build --platform linux/amd64,linux/arm64 \
-  -t ghcr.io/<you>/relentlessbadger-api --push backend/
+deploy/publish.sh
 ```
 
-Then on the Pi set `API_IMAGE=ghcr.io/<you>/relentlessbadger-api` in `.env` and run `up -d` without `--build`. The same `buildx` command is what a CI/CD pipeline would run to publish the image.
+In order, it:
+
+1. Checks the Pi (Docker, Tailscale, `.env`).
+2. Builds both images and tags them with the git sha (plus `-dirty` if there are uncommitted changes).
+3. Ships the images and the compose and gateway files.
+4. Renews the certificate and reloads the gateway.
+5. **Dumps the database** (skip with `SKIP_BACKUP=1`).
+6. Restarts the stack.
+7. Waits until `/badger-api/health` and `/badger/` answer over HTTPS.
+
+The API applies pending EF Core migrations as it starts, so a healthy publish means a migrated database. If the health check fails, the script prints the API and gateway logs and exits non-zero. It doesn't roll back, but the previous three image builds stay on the Pi.
+
+The data lives in the named volume `relentlessbadger_pgdata`; the compose project name is pinned, so it survives every publish. If the Pi already has a `relentlessbadger-db` container from an earlier manual deploy on a different volume, the script stops without changing anything, because starting next to it would come up on an empty database. To carry that data over: `pg_dump` it, stop the old stack, publish, then restore as below.
+
+Point the Android app at the Pi with `./gradlew assembleDebug -PBADGER_API_BASE_URL=https://<pi>.ts.net/badger-api`.
+
+### Back up and restore
+
+```bash
+deploy/backup.sh
+```
+
+This takes a `pg_dump` (custom format) into the folder the Postgres container shares with the host (`~/relentlessbadger/backups`, or `BACKUP_DIR` in the Pi's `.env`) and keeps the newest `BACKUP_KEEP` (default 14). To restore a dump, on the Pi:
+
+```bash
+docker exec relentlessbadger-db pg_restore --clean --if-exists -U badger -d relentlessbadger /backups/<file>.dump
+```
+
+Tailscale certificates last 90 days, and each publish renews it. To cover long gaps between publishes, add this to the Pi's crontab (`crontab -e`):
+
+```
+0 4 * * 1 tailscale cert --cert-file ~/gateway/certs/fullchain.pem --key-file ~/gateway/certs/privkey.pem <pi>.ts.net && docker exec gateway nginx -c /etc/nginx/gateway/nginx.conf -s reload
+```
+
+### Adding another app to the gateway
+
+The gateway (`deploy/gateway/`, installed at `~/gateway`) is its own compose project, so other apps can share port 443. An app adds `~/gateway/nginx/sites/<app>.conf` with its `location` blocks, attaches its containers to the external `gateway` Docker network, and reloads nginx. Upstreams are addressed through variables (see [`badger.conf`](deploy/gateway/nginx/sites/badger.conf)) so the gateway keeps running while any one app is down. Publishing this repo rewrites only `badger.conf`, `nginx.conf` and the gateway's compose file.
 
 ## Configuration
 
@@ -180,8 +232,9 @@ Then on the Pi set `API_IMAGE=ghcr.io/<you>/relentlessbadger-api` in `.env` and 
 |---|---|---|
 | App: API base URL | `BADGER_API_BASE_URL` in `android/gradle.properties` (dev.sh bakes `http://localhost:5000` for the emulator) | `-PBADGER_API_BASE_URL=...` or env `ORG_GRADLE_PROJECT_BADGER_API_BASE_URL` |
 | App: Google client ID | `BADGER_GOOGLE_WEB_CLIENT_ID` in `android/gradle.properties` | `-P` flag or env `ORG_GRADLE_PROJECT_BADGER_GOOGLE_WEB_CLIENT_ID` |
-| Web: API base URL + Google client ID | `web/src/environments/environment.development.ts` | `web/src/environments/environment.ts` (build-time) |
-| API: allowed browser origins | `Cors:AllowedOrigins` in `appsettings.Development.json` | `Cors__AllowedOrigins__0` / `WEB_ORIGIN` in `.env` |
+| Web: API base URL + Google client ID | `web/src/environments/environment.development.ts` | `environment.ts`, written at image build time by `web/Dockerfile` (`/badger-api`, `GOOGLE_WEB_CLIENT_ID` in `deploy/deploy.env`) |
+| API: allowed browser origins | `Cors:AllowedOrigins` in `appsettings.Development.json` | none needed behind the gateway (same origin); `WEB_ORIGIN` in `.env` for a web app hosted elsewhere |
+| Deploy target (ssh, Tailscale name, backups) | — | `deploy/deploy.env` (see `deploy/deploy.env.example`) |
 | API: any appsettings key | `appsettings.Development.json` | env vars with `__` as the separator (e.g. `Jwt__Key`, `ConnectionStrings__Default`) — see `docker-compose.prod.yml` / `.env.example` |
 
 ## API
@@ -212,7 +265,11 @@ The web suite is that same suite, ported scenario for scenario (`web/src/app/cor
 
 ```
 ├── docker-compose.yml            # dev: PostgreSQL 17 only
-├── docker-compose.prod.yml       # prod: PostgreSQL + API containers (see .env.example)
+├── docker-compose.prod.yml       # prod: PostgreSQL + API + web containers (see .env.example)
+├── deploy/
+│   ├── publish.sh                # build, ship and roll out to the Pi over ssh
+│   ├── backup.sh                 # pg_dump on the Pi into the shared backups folder
+│   └── gateway/                  # HTTPS nginx on the Pi (/badger, /badger-api)
 ├── backend/
 │   ├── Dockerfile                # multi-arch (amd64/arm64) API image
 │   ├── RelentlessBadger.Api/    # minimal-API endpoints, EF Core + Npgsql, JWT auth
@@ -226,6 +283,7 @@ The web suite is that same suite, ported scenario for scenario (`web/src/app/cor
         ├── sync/                 # WorkManager background sync (pushes queued changes on reconnect)
         └── ui/                   # Compose Material 3 screens
 └── web/
+    ├── Dockerfile                # PWA image: ng build under /badger/, served by nginx
     └── src/app/
         ├── core/domain/          # framework-free rules: scheduling, recurrence, calendar, fuzzy match
         ├── core/data/            # localStorage database, DAOs, API client, the ported repository
