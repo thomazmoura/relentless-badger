@@ -7,13 +7,15 @@ import com.relentlessbadger.app.data.ApiClient
 import com.relentlessbadger.app.data.SessionStore
 import com.relentlessbadger.app.data.TaskRepository
 import com.relentlessbadger.app.db.BadgerDb
+import com.relentlessbadger.app.diagnostics.CrashLog
+import com.relentlessbadger.app.diagnostics.CrashReporting
 import com.relentlessbadger.app.notify.AlarmReminderScheduler
 import com.relentlessbadger.app.notify.Notifications
 import com.relentlessbadger.app.notify.ReminderScheduler
 import com.relentlessbadger.app.sync.WorkManagerSyncScheduler
 import kotlinx.coroutines.runBlocking
 
-class AppContainer(context: Context) {
+class AppContainer(context: Context, val crashLog: CrashLog) {
     val session = SessionStore(context)
     val apiClient = ApiClient(session)
     private val db = Room.databaseBuilder(context, BadgerDb::class.java, "badger.db")
@@ -39,7 +41,10 @@ class BadgerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        // Before anything else, so a crash while building the container is caught too.
+        val crashLog = CrashReporting.createLog(this)
+        CrashReporting.install(this, crashLog)
+        container = AppContainer(this, crashLog)
         Notifications.ensureChannel(this)
         // Warm the token/baseUrl mirrors before any receiver touches the API.
         val session = runBlocking { container.session.current() }

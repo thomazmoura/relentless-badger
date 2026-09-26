@@ -21,7 +21,9 @@ import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.db.CompletedTaskEntity
 import com.relentlessbadger.app.db.OpenTaskEntity
+import com.relentlessbadger.app.diagnostics.CrashLogSummary
 import com.relentlessbadger.app.fuzzy.Fuzzy
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -356,6 +359,24 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun canScheduleExactAlarms(): Boolean = container.scheduler.canScheduleExact()
+
+    var crashLogSummary by mutableStateOf(CrashLogSummary(0, null))
+        private set
+
+    fun refreshCrashLog() {
+        viewModelScope.launch {
+            crashLogSummary = withContext(Dispatchers.IO) { container.crashLog.summary() }
+        }
+    }
+
+    suspend fun crashLogText(): String = withContext(Dispatchers.IO) { container.crashLog.read() }
+
+    fun clearCrashLog() {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { container.crashLog.clear() }
+            refreshCrashLog()
+        }
+    }
 
     private fun launchBusy(block: suspend () -> Unit) {
         viewModelScope.launch {

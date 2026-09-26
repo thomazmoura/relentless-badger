@@ -9,6 +9,8 @@ import { MatRadioModule } from '@angular/material/radio';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
+import { CRASH_LOG } from '../../core/diagnostics/crash-log';
+import { formatDateTime, prefers24Hour } from '../../core/domain/format';
 import { MAX_WAITS } from '../../core/domain/models';
 import { ConfirmDialog } from '../dialogs/confirm-dialog';
 
@@ -143,6 +145,24 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           >
             Send test notification
           </button>
+
+          <p class="hint">{{ crashSummaryText() }}</p>
+          <button
+            matButton="outlined"
+            class="full"
+            [disabled]="crashSummary().count === 0"
+            (click)="shareCrashLog()"
+          >
+            Share crash log
+          </button>
+          <button
+            matButton="outlined"
+            class="full"
+            [disabled]="crashSummary().count === 0"
+            (click)="clearCrashLog()"
+          >
+            Clear crash log
+          </button>
         }
       </div>
     </div>
@@ -192,6 +212,7 @@ export class SettingsPage {
   readonly state = inject(AppState);
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
+  private readonly crashLog = inject(CRASH_LOG);
 
   readonly maxWaits = MAX_WAITS;
 
@@ -202,6 +223,14 @@ export class SettingsPage {
   readonly defaultWaitIndex = signal(this.session.defaultWaitIndex);
   readonly showAdvanced = signal(false);
   readonly serverUrl = signal(this.session.baseUrl);
+
+  readonly crashSummary = signal(this.crashLog.summary());
+  readonly crashSummaryText = computed(() => {
+    const { count, latestMillis } = this.crashSummary();
+    if (count === 0) return 'No crashes recorded';
+    const latest = latestMillis === null ? 'unknown' : formatDateTime(latestMillis, prefers24Hour());
+    return `${count} ${count === 1 ? 'crash' : 'crashes'} recorded, latest ${latest}`;
+  });
 
   readonly normalizedServerUrl = computed(() => this.serverUrl().trim().replace(/\/+$/, ''));
 
@@ -262,6 +291,43 @@ export class SettingsPage {
       .afterClosed()
       .toPromise();
     if (confirmed) await this.state.changeServerUrl(this.serverUrl());
+  }
+
+  /** The share sheet where the browser has one (phones), otherwise a file download. */
+  async shareCrashLog(): Promise<void> {
+    const text = this.crashLog.read();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'RelentlessBadger crash log', text });
+        return;
+      } catch (error) {
+        // Dismissing the sheet is not a reason to download instead.
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
+    }
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'relentlessbadger-crash-log.txt';
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async clearCrashLog(): Promise<void> {
+    const confirmed = await this.dialog
+      .open(ConfirmDialog, {
+        data: {
+          title: 'Clear crash log?',
+          message:
+            "Recorded crashes are deleted from this device. Share them first if they're still needed.",
+          confirmLabel: 'Clear',
+        },
+      })
+      .afterClosed()
+      .toPromise();
+    if (!confirmed) return;
+    this.crashLog.clear();
+    this.crashSummary.set(this.crashLog.summary());
   }
 
   async signOut(): Promise<void> {

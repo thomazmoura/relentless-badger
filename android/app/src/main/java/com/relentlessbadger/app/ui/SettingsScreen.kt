@@ -1,5 +1,6 @@
 package com.relentlessbadger.app.ui
 
+import android.content.Intent
 import android.text.format.DateFormat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,9 +30,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -46,6 +49,7 @@ import com.relentlessbadger.app.data.MAX_QUIET_RANGES
 import com.relentlessbadger.app.data.MAX_WAITS
 import com.relentlessbadger.app.data.parseQuietRange
 import com.relentlessbadger.app.data.Session
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,7 +58,9 @@ fun SettingsScreen(
     session: Session,
     onBack: () -> Unit,
 ) {
-    val use24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val context = LocalContext.current
+    val use24Hour = DateFormat.is24HourFormat(context)
+    val scope = rememberCoroutineScope()
     var initialDelay by rememberSaveable { mutableStateOf(session.initialDelayMinutes.toString()) }
     var repeatInterval by rememberSaveable { mutableStateOf(session.repeatIntervalMinutes.toString()) }
     val waits = rememberSaveable(saver = listSaver({ it.toList() }, { it.toMutableStateList() })) {
@@ -81,6 +87,8 @@ fun SettingsScreen(
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var serverUrl by rememberSaveable { mutableStateOf(session.baseUrl) }
     var confirmServerChange by rememberSaveable { mutableStateOf(false) }
+    var confirmClearCrashLog by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) { viewModel.refreshCrashLog() }
     val normalizedServerUrl = serverUrl.trim().trimEnd('/')
 
     val initialDelayValue = initialDelay.toIntOrNull()
@@ -339,6 +347,44 @@ fun SettingsScreen(
                 ) {
                     Text("Send test notification")
                 }
+
+                Spacer(Modifier.height(16.dp))
+                val crashes = viewModel.crashLogSummary
+                Text(
+                    when (crashes.count) {
+                        0 -> "No crashes recorded"
+                        else -> "${crashes.count} ${if (crashes.count == 1) "crash" else "crashes"} " +
+                            "recorded, latest " +
+                            (crashes.latest?.let { formatDateTime(it.toEpochMilli(), use24Hour) } ?: "unknown")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = {
+                        scope.launch {
+                            val send = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "RelentlessBadger crash log")
+                                putExtra(Intent.EXTRA_TEXT, viewModel.crashLogText())
+                            }
+                            context.startActivity(Intent.createChooser(send, "Share crash log"))
+                        }
+                    },
+                    enabled = crashes.count > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Share crash log")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { confirmClearCrashLog = true },
+                    enabled = crashes.count > 0,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text("Clear crash log")
+                }
             }
 
             viewModel.errorMessage?.let { message ->
@@ -368,6 +414,29 @@ fun SettingsScreen(
                     }
                 }
                 editingQuietIndex = -1
+            },
+        )
+    }
+
+    if (confirmClearCrashLog) {
+        AlertDialog(
+            onDismissRequest = { confirmClearCrashLog = false },
+            title = { Text("Clear crash log?") },
+            text = { Text("Recorded crashes are deleted from this device. Share them first if they're still needed.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClearCrashLog = false
+                        viewModel.clearCrashLog()
+                    },
+                ) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClearCrashLog = false }) {
+                    Text("Cancel")
+                }
             },
         )
     }
