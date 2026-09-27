@@ -314,6 +314,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /**
+     * Commits everything the Settings screen holds in one go, whether from its
+     * Apply button or from leaving the screen. Sound and stream stay on the
+     * device; the rest syncs.
+     */
     fun saveSettings(
         initialDelayMinutes: Int,
         repeatIntervalMinutes: Int,
@@ -321,6 +326,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         defaultWaitIndex: Int,
         quietHours: List<QuietRange>,
         minNotificationGapSeconds: Int,
+        notificationSound: NotificationSound,
+        soundStream: SoundStream,
         onDone: () -> Unit,
     ) {
         launchBusy {
@@ -330,23 +337,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                     quietHours.map { it.toString() },
                 ),
             )
-            // Saved separately: this one stays on the device instead of syncing.
+            // Saved separately: these stay on the device instead of syncing.
             container.repository.updateNotificationGapSeconds(minNotificationGapSeconds)
+            container.repository.updateNotificationSound(notificationSound)
+            container.repository.updateSoundStream(soundStream)
             onDone()
-        }
-    }
-
-    /** Applied at once, unlike the Save-button settings: the dialog was the confirmation. */
-    fun updateNotificationSound(sound: NotificationSound) {
-        viewModelScope.launch {
-            container.repository.updateNotificationSound(sound)
-        }
-    }
-
-    /** Applied at once, like the sound it goes with. */
-    fun updateSoundStream(stream: SoundStream) {
-        viewModelScope.launch {
-            container.repository.updateSoundStream(stream)
         }
     }
 

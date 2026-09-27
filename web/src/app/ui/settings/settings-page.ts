@@ -7,6 +7,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { Location } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -21,11 +22,12 @@ import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
 import { CRASH_LOG } from '../../core/diagnostics/crash-log';
 import { formatDateTime, prefers24Hour } from '../../core/domain/format';
-import { MAX_WAITS } from '../../core/domain/models';
+import { MAX_WAITS, SettingsDto } from '../../core/domain/models';
 import {
   BUILT_IN_SOUNDS,
   notificationSoundSource,
   parseNotificationSound,
+  toStorageString,
 } from '../../core/domain/notification-sound';
 import { AudioElementSoundPlayer } from '../../core/notify/sound-player';
 import { ConfirmDialog } from '../dialogs/confirm-dialog';
@@ -33,6 +35,9 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
 /**
  * Defaults for new tasks, the snooze options every task and reminder offers,
  * and the escape hatches: sign out and point the app at another server.
+ *
+ * Edits are a draft held against the stored session: Apply and Undo float in
+ * while it differs, and leaving the page applies whatever is still pending.
  */
 @Component({
   selector: 'app-settings-page',
@@ -124,7 +129,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           <mat-form-field appearance="outline" class="grow">
             <mat-label>Notification sound</mat-label>
             <mat-select
-              [value]="storedSound()"
+              [value]="draftSound()"
               (selectionChange)="chooseSound($event.source, $event.value)"
             >
               <mat-option value="silent">Silent</mat-option>
@@ -133,7 +138,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
                 <mat-option [value]="'builtin:' + sound.key">{{ sound.label }}</mat-option>
               }
               @if (sound().kind === 'custom') {
-                <mat-option [value]="storedSound()">{{ soundLabel() }}</mat-option>
+                <mat-option [value]="draftSound()">{{ soundLabel() }}</mat-option>
               }
               <mat-option value="upload">Upload your own…</mat-option>
             </mat-select>
@@ -149,15 +154,6 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
         </div>
         <input #soundFile type="file" accept="audio/*" hidden (change)="uploadSound($event)" />
         <p class="hint sound-credit">Built-in sounds: Google Material, CC-BY 4.0</p>
-
-        <button
-          matButton="filled"
-          class="save"
-          [disabled]="!valid() || state.busy()"
-          (click)="save()"
-        >
-          Save
-        </button>
 
         <p class="signed-in">Signed in as {{ state.session().email ?? 'unknown' }}</p>
         <button matButton="outlined" class="full" (click)="signOut()">Sign out</button>
@@ -213,9 +209,23 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
         }
       </div>
     </div>
+
+    @if (changed()) {
+      <div class="fabs">
+        <button matFab extended class="undo" (click)="undo()">
+          <mat-icon>undo</mat-icon>
+          Undo
+        </button>
+        <button matFab extended [disabled]="!valid() || state.busy()" (click)="apply()">
+          <mat-icon>check</mat-icon>
+          Apply
+        </button>
+      </div>
+    }
   `,
   styles: `
     :host {
+      position: relative;
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -225,6 +235,19 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
       flex: 1;
       overflow-y: auto;
       padding: 1rem;
+      /* Room to scroll the last rows out from under Apply and Undo. */
+      padding-bottom: 6rem;
+    }
+    .fabs {
+      position: absolute;
+      right: 1rem;
+      bottom: calc(1rem + env(safe-area-inset-bottom));
+      display: flex;
+      gap: 0.75rem;
+    }
+    .fabs .undo {
+      --mat-fab-container-color: var(--mat-sys-secondary-container);
+      --mat-fab-foreground-color: var(--mat-sys-on-secondary-container);
     }
     .page-body {
       display: flex;
@@ -254,7 +277,6 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
     .sound-credit {
       margin: -0.75rem 0 0.5rem;
     }
-    .save,
     .full {
       width: 100%;
     }
@@ -268,6 +290,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
 export class SettingsPage {
   readonly state = inject(AppState);
   private readonly router = inject(Router);
+  private readonly location = inject(Location);
   private readonly dialog = inject(MatDialog);
   private readonly crashLog = inject(CRASH_LOG);
   private readonly snackBar = inject(MatSnackBar);
@@ -277,17 +300,15 @@ export class SettingsPage {
   readonly maxWaits = MAX_WAITS;
   readonly builtInSounds = BUILT_IN_SOUNDS;
 
-  // Read live rather than snapshotted like the Save-button fields: a sound is
-  // applied the moment it's chosen.
-  readonly storedSound = computed(() => this.state.session().notificationSound);
-  readonly sound = computed(() => parseNotificationSound(this.storedSound()));
+  private readonly session = this.state.session();
+  readonly draftSound = signal(this.session.notificationSound);
+  readonly sound = computed(() => parseNotificationSound(this.draftSound()));
   readonly soundLabel = computed(() => {
     const sound = this.sound();
     return sound.kind === 'custom' ? sound.label : '';
   });
   readonly soundSource = computed(() => notificationSoundSource(this.sound()));
 
-  private readonly session = this.state.session();
   readonly initialDelay = signal(String(this.session.initialDelayMinutes));
   readonly repeatInterval = signal(String(this.session.repeatIntervalMinutes));
   readonly waits = signal<string[]>(this.session.waitMinutes.map(String));
@@ -306,6 +327,24 @@ export class SettingsPage {
 
   readonly normalizedServerUrl = computed(() => this.serverUrl().trim().replace(/\/+$/, ''));
 
+  // Measured against the stored session rather than a snapshot, so an Apply
+  // makes the draft clean again and Undo always lands on what is in force.
+  readonly changed = computed(() => {
+    const stored = this.state.session();
+    const waits = this.waits().map(parsePositive);
+    return (
+      parseNonNegative(this.initialDelay()) !== stored.initialDelayMinutes ||
+      parsePositive(this.repeatInterval()) !== stored.repeatIntervalMinutes ||
+      waits.length !== stored.waitMinutes.length ||
+      waits.some((wait, i) => wait !== stored.waitMinutes[i]) ||
+      this.defaultWaitIndex() !== stored.defaultWaitIndex ||
+      this.draftSound() !== stored.notificationSound
+    );
+  });
+
+  /** Set on sign-out, whose navigation must not try to save into a cleared session. */
+  private leaving = false;
+
   readonly valid = computed(() => {
     const initialDelay = parseNonNegative(this.initialDelay());
     const numbers = [this.repeatInterval(), ...this.waits()].map(parsePositive);
@@ -323,11 +362,11 @@ export class SettingsPage {
     if (value === 'upload') {
       // "Upload" is an action, not a choice: put the select back on the
       // current sound until a file actually arrives.
-      select.value = this.storedSound();
+      select.value = this.draftSound();
       this.soundFile().nativeElement.click();
       return;
     }
-    await this.state.updateNotificationSound(parseNotificationSound(value));
+    this.draftSound.set(value);
     this.previewSound();
   }
 
@@ -361,7 +400,7 @@ export class SettingsPage {
       });
       return;
     }
-    await this.state.updateNotificationSound({ kind: 'custom', uri, label: file.name });
+    this.draftSound.set(toStorageString({ kind: 'custom', uri, label: file.name }));
     this.previewSound();
   }
 
@@ -381,20 +420,43 @@ export class SettingsPage {
     );
   }
 
-  async save(): Promise<void> {
-    if (!this.valid()) return;
-    await this.state.saveSettings(
-      {
-        initialDelayMinutes: parseNonNegative(this.initialDelay())!,
-        repeatIntervalMinutes: parsePositive(this.repeatInterval())!,
-        waitMinutes: this.waits().map((wait) => parsePositive(wait)!),
-        defaultWaitIndex: this.defaultWaitIndex(),
-        // Not editable here — carried through so saving on this client can't
-        // wipe quiet hours set on the phone.
-        quietHours: this.session.quietHours,
-      },
-      () => this.back(),
-    );
+  undo(): void {
+    const stored = this.state.session();
+    this.initialDelay.set(String(stored.initialDelayMinutes));
+    this.repeatInterval.set(String(stored.repeatIntervalMinutes));
+    this.waits.set(stored.waitMinutes.map(String));
+    this.defaultWaitIndex.set(stored.defaultWaitIndex);
+    this.draftSound.set(stored.notificationSound);
+  }
+
+  async apply(): Promise<boolean> {
+    if (!this.valid()) return false;
+    const settings: SettingsDto = {
+      initialDelayMinutes: parseNonNegative(this.initialDelay())!,
+      repeatIntervalMinutes: parsePositive(this.repeatInterval())!,
+      waitMinutes: this.waits().map((wait) => parsePositive(wait)!),
+      defaultWaitIndex: this.defaultWaitIndex(),
+      // Not editable here — carried through so saving on this client can't
+      // wipe quiet hours set on the phone.
+      quietHours: this.state.session().quietHours,
+    };
+    return this.state.saveSettings(settings, parseNotificationSound(this.draftSound()));
+  }
+
+  /**
+   * The route's canDeactivate, so the toolbar arrow and the browser's back
+   * both apply pending edits on the way out. Invalid ones hold the page
+   * instead of being dropped: nothing typed is lost without choosing Undo.
+   */
+  async leave(): Promise<boolean> {
+    if (this.leaving || !this.changed()) return true;
+    if (!this.valid()) {
+      this.snackBar.open('Fix the highlighted values, or Undo them', undefined, {
+        duration: 4000,
+      });
+      return false;
+    }
+    return this.apply();
   }
 
   async changeServer(): Promise<void> {
@@ -450,12 +512,18 @@ export class SettingsPage {
   }
 
   async signOut(): Promise<void> {
+    this.leaving = true;
     await this.state.signOut();
     await this.router.navigate(['/signin']);
   }
 
+  /** Back through history when Settings was opened in-app, so it isn't left behind as a forward stop. */
   back(): void {
-    void this.router.navigate(['/']);
+    if (this.router.lastSuccessfulNavigation()?.previousNavigation) {
+      this.location.back();
+    } else {
+      void this.router.navigate(['/'], { replaceUrl: true });
+    }
   }
 }
 

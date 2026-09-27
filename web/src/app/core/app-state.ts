@@ -309,11 +309,19 @@ export class AppState {
     this.resetTaskList();
   }
 
-  async saveSettings(settings: SettingsDto, onDone: () => void): Promise<void> {
+  /**
+   * Commits everything the Settings page holds in one go, whether from its
+   * Apply button or from leaving the page. The sound stays in this browser;
+   * the rest syncs. Resolves false when saving failed and the error is showing.
+   */
+  async saveSettings(settings: SettingsDto, sound: NotificationSound): Promise<boolean> {
+    let saved = false;
     await this.runBusy(async () => {
       await this.repository.updateSettings(settings);
-      onDone();
+      await this.repository.updateNotificationSound(sound);
+      saved = true;
     });
+    return saved;
   }
 
   async changeServerUrl(url: string): Promise<void> {
@@ -352,11 +360,6 @@ export class AppState {
 
   async showTestNotification(): Promise<void> {
     await this.repository.showTestNotification();
-  }
-
-  /** Applied at once, unlike the Save-button settings: choosing it was the confirmation. */
-  async updateNotificationSound(sound: NotificationSound): Promise<void> {
-    await this.repository.updateNotificationSound(sound);
   }
 
   private resetTaskList(): void {

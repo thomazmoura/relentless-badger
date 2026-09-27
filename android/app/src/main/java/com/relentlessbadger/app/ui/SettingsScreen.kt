@@ -2,8 +2,15 @@ package com.relentlessbadger.app.ui
 
 import android.content.Intent
 import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,10 +21,12 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -25,6 +34,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,8 +59,11 @@ import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_QUIET_HOURS
 import com.relentlessbadger.app.data.MAX_QUIET_RANGES
 import com.relentlessbadger.app.data.MAX_WAITS
+import com.relentlessbadger.app.data.parseNotificationSound
 import com.relentlessbadger.app.data.parseQuietRange
+import com.relentlessbadger.app.data.toStorageString
 import com.relentlessbadger.app.data.Session
+import com.relentlessbadger.app.data.SoundStream
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -88,6 +103,12 @@ fun SettingsScreen(
     var serverUrl by rememberSaveable { mutableStateOf(session.baseUrl) }
     var confirmServerChange by rememberSaveable { mutableStateOf(false) }
     var confirmClearCrashLog by rememberSaveable { mutableStateOf(false) }
+    // Held as their storage forms so they survive process death like the rest.
+    var soundKey by rememberSaveable { mutableStateOf(session.notificationSound.toStorageString()) }
+    var streamName by rememberSaveable { mutableStateOf(session.soundStream.name) }
+    val sound = parseNotificationSound(soundKey)
+    val stream = SoundStream.valueOf(streamName)
+    val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { viewModel.refreshCrashLog() }
     val normalizedServerUrl = serverUrl.trim().trimEnd('/')
 
@@ -100,17 +121,98 @@ fun SettingsScreen(
         defaultWaitIndex in waits.indices &&
         (notificationGapValue ?: -1) >= 0 &&
         (!quietHoursOn || quietHours.isNotEmpty())
+    val effectiveQuietHours = if (quietHoursOn) quietHours.toList() else emptyList()
+
+    // Measured against the stored session rather than a snapshot, so an Apply
+    // makes the draft clean again and Undo always lands on what is in force.
+    val changed = initialDelayValue != session.initialDelayMinutes ||
+        repeatIntervalValue != session.repeatIntervalMinutes ||
+        waitValues != session.waitMinutes ||
+        defaultWaitIndex != session.defaultWaitIndex ||
+        notificationGapValue != session.minNotificationGapSeconds ||
+        effectiveQuietHours != session.quietHours ||
+        sound != session.notificationSound ||
+        stream != session.soundStream
+
+    fun undo() {
+        initialDelay = session.initialDelayMinutes.toString()
+        repeatInterval = session.repeatIntervalMinutes.toString()
+        waits.clear()
+        waits.addAll(session.waitMinutes.map { it.toString() })
+        defaultWaitIndex = session.defaultWaitIndex
+        notificationGap = session.minNotificationGapSeconds.toString()
+        quietHoursOn = session.quietHours.isNotEmpty()
+        quietHours.clear()
+        quietHours.addAll(session.quietHours.ifEmpty { DEFAULT_QUIET_HOURS })
+        soundKey = session.notificationSound.toStorageString()
+        streamName = session.soundStream.name
+    }
+
+    fun apply(onDone: () -> Unit) {
+        viewModel.saveSettings(
+            initialDelayValue!!,
+            repeatIntervalValue!!,
+            waitValues.map { it!! },
+            defaultWaitIndex,
+            effectiveQuietHours,
+            notificationGapValue!!,
+            sound,
+            stream,
+            onDone = onDone,
+        )
+    }
+
+    // Leaving is the save: pending edits are applied on the way out. Invalid
+    // ones hold the screen instead of being dropped, so nothing typed is lost
+    // without the user choosing Undo.
+    fun close() {
+        when {
+            viewModel.busy -> Unit
+            !changed -> onBack()
+            valid -> apply(onDone = onBack)
+            else -> scope.launch {
+                snackbarHostState.showSnackbar("Fix the highlighted values, or Undo them")
+            }
+        }
+    }
+
+    BackHandler(onBack = ::close)
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Settings") },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = ::close) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
             )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        floatingActionButton = {
+            AnimatedVisibility(visible = changed, enter = fadeIn() + scaleIn(), exit = fadeOut() + scaleOut()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    ExtendedFloatingActionButton(
+                        onClick = ::undo,
+                        icon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
+                        text = { Text("Undo") },
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                    ExtendedFloatingActionButton(
+                        onClick = {
+                            if (valid && !viewModel.busy) {
+                                apply(onDone = {})
+                            } else if (!valid) {
+                                scope.launch { snackbarHostState.showSnackbar("Fix the highlighted values first") }
+                            }
+                        },
+                        icon = { Icon(Icons.Filled.Check, contentDescription = null) },
+                        text = { Text("Apply") },
+                    )
+                }
+            }
         },
     ) { padding ->
         Column(
@@ -222,10 +324,10 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
 
             NotificationSoundSetting(
-                current = session.notificationSound,
-                onChosen = viewModel::updateNotificationSound,
-                stream = session.soundStream,
-                onStreamChosen = viewModel::updateSoundStream,
+                current = sound,
+                onChosen = { soundKey = it.toStorageString() },
+                stream = stream,
+                onStreamChosen = { streamName = it.name },
             )
 
             Spacer(Modifier.height(24.dp))
@@ -289,26 +391,6 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            Button(
-                onClick = {
-                    viewModel.saveSettings(
-                        initialDelayValue!!,
-                        repeatIntervalValue!!,
-                        waitValues.map { it!! },
-                        defaultWaitIndex,
-                        if (quietHoursOn) quietHours.toList() else emptyList(),
-                        notificationGapValue!!,
-                        onDone = onBack,
-                    )
-                },
-                enabled = valid && !viewModel.busy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text("Save")
             }
 
             Spacer(Modifier.height(32.dp))
@@ -400,6 +482,9 @@ fun SettingsScreen(
                 Spacer(Modifier.height(16.dp))
                 Text(message, color = MaterialTheme.colorScheme.error)
             }
+
+            // Room to scroll the last rows out from under the Apply and Undo buttons.
+            Spacer(Modifier.height(88.dp))
         }
     }
 

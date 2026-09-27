@@ -49,8 +49,9 @@ import com.relentlessbadger.app.notify.Notifications
 /**
  * The "Notification sound" row: shows the current choice and opens a dialog
  * that previews each option as it is tapped, so picking a sound means hearing
- * it. The dialog's choice is applied on OK; a sound from the device picker is
- * applied straight away, since picking it there was already the decision.
+ * it. The dialog's choice is handed back on OK; a sound from the device picker
+ * straight away, since picking it there was already the decision. Either way it
+ * joins the Settings screen's pending changes rather than being stored here.
  *
  * Below it, the stream the sound plays on. Android-only by nature: a web page
  * can't choose the stream its notifications play on, so the PWA has no

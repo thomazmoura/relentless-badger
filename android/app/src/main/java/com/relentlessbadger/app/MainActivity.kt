@@ -157,46 +157,53 @@ private fun App(
             DailyOverviewScreen(viewModel, viewModel.dayOverviewDate, onBack = close)
         }
 
-        else -> Scaffold(
-            bottomBar = {
-                // Swiping the bar drags the pager just like swiping the pages.
-                // Pager content moves opposite to scroll position, hence the
-                // reverseDirection matching what the pager uses internally.
-                NavigationBar(
-                    modifier = Modifier.scrollable(
-                        state = pagerState,
-                        orientation = Orientation.Horizontal,
-                        reverseDirection = ScrollableDefaults.reverseDirection(
-                            LocalLayoutDirection.current,
-                            Orientation.Horizontal,
-                            reverseScrolling = false,
+        else -> {
+            // Tasks is home: back from any other tab returns there before it
+            // is allowed to leave the app.
+            BackHandler(enabled = pagerState.currentPage != Tab.Tasks.ordinal) {
+                scope.launch { pagerState.animateScrollToPage(Tab.Tasks.ordinal) }
+            }
+            Scaffold(
+                bottomBar = {
+                    // Swiping the bar drags the pager just like swiping the pages.
+                    // Pager content moves opposite to scroll position, hence the
+                    // reverseDirection matching what the pager uses internally.
+                    NavigationBar(
+                        modifier = Modifier.scrollable(
+                            state = pagerState,
+                            orientation = Orientation.Horizontal,
+                            reverseDirection = ScrollableDefaults.reverseDirection(
+                                LocalLayoutDirection.current,
+                                Orientation.Horizontal,
+                                reverseScrolling = false,
+                            ),
+                            flingBehavior = PagerDefaults.flingBehavior(state = pagerState),
                         ),
-                        flingBehavior = PagerDefaults.flingBehavior(state = pagerState),
-                    ),
-                ) {
-                    Tab.entries.forEach { t ->
-                        NavigationBarItem(
-                            selected = pagerState.currentPage == t.ordinal,
-                            onClick = { scope.launch { pagerState.animateScrollToPage(t.ordinal) } },
-                            icon = { Icon(t.icon, contentDescription = t.label) },
-                            label = { Text(t.label) },
-                        )
+                    ) {
+                        Tab.entries.forEach { t ->
+                            NavigationBarItem(
+                                selected = pagerState.currentPage == t.ordinal,
+                                onClick = { scope.launch { pagerState.animateScrollToPage(t.ordinal) } },
+                                icon = { Icon(t.icon, contentDescription = t.label) },
+                                label = { Text(t.label) },
+                            )
+                        }
                     }
-                }
-            },
-        ) { padding ->
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.padding(padding),
-            ) { page ->
-                when (Tab.entries[page]) {
-                    Tab.Tasks -> MainScreen(
-                        viewModel = viewModel,
-                        onOpenSettings = { showSettings = true },
-                        requestNotificationPermission = requestNotificationPermission,
-                    )
-                    Tab.Today -> DailyOverviewScreen(viewModel)
-                    Tab.Calendar -> CalendarScreen(viewModel)
+                },
+            ) { padding ->
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.padding(padding),
+                ) { page ->
+                    when (Tab.entries[page]) {
+                        Tab.Tasks -> MainScreen(
+                            viewModel = viewModel,
+                            onOpenSettings = { showSettings = true },
+                            requestNotificationPermission = requestNotificationPermission,
+                        )
+                        Tab.Today -> DailyOverviewScreen(viewModel)
+                        Tab.Calendar -> CalendarScreen(viewModel)
+                    }
                 }
             }
         }

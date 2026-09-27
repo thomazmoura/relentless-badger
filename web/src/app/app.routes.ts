@@ -22,6 +22,8 @@ export const routes: Routes = [
   {
     path: 'settings',
     canActivate: [signedIn],
+    // Leaving Settings, however it happens, applies its pending edits.
+    canDeactivate: [(page: { leave(): Promise<boolean> }) => page.leave()],
     loadComponent: () => import('./ui/settings/settings-page').then((m) => m.SettingsPage),
   },
   {

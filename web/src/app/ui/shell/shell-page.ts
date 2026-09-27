@@ -1,24 +1,30 @@
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { Location } from '@angular/common';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AppState } from '../../core/app-state';
-import { BadgerStoreService } from '../../core/store.service';
 import { CalendarPage } from '../calendar/calendar-page';
 import { TasksPage } from '../tasks/tasks-page';
 import { TodayPage } from '../today/today-page';
 
 const TABS = [
-  { label: 'Tasks', icon: 'checklist' },
-  { label: 'Today', icon: 'today' },
-  { label: 'Calendar', icon: 'calendar_month' },
+  { key: 'tasks', label: 'Tasks', icon: 'checklist' },
+  { key: 'today', label: 'Today', icon: 'today' },
+  { key: 'calendar', label: 'Calendar', icon: 'calendar_month' },
 ] as const;
+
+/** Marks a history entry pushed on top of Tasks, so going home can pop it. */
+const FROM_TASKS = 'badgerFromTasks';
 
 /** A drag shorter than this is a tap or a scroll, not a tab change. */
 const SWIPE_THRESHOLD_PX = 60;
 
 /**
- * Tasks, Today and Calendar, swipeable and with a bottom bar. The selected tab is
- * remembered on the device, so coming back from Settings lands where you were.
+ * Tasks, Today and Calendar, swipeable and with a bottom bar. Tasks is home: the
+ * other tabs live in the URL as one history entry above it, so the browser's
+ * back returns to Tasks, as the system back does on Android.
  */
 @Component({
   selector: 'app-shell-page',
@@ -105,16 +111,40 @@ const SWIPE_THRESHOLD_PX = 60;
   `,
 })
 export class ShellPage {
-  private readonly storeService = inject(BadgerStoreService);
+  private readonly router = inject(Router);
+  private readonly location = inject(Location);
   readonly state = inject(AppState);
   readonly tabs = TABS;
-  readonly tab = signal(this.storeService.store.currentUi().tab);
+  private readonly queryParams = toSignal(inject(ActivatedRoute).queryParamMap, {
+    requireSync: true,
+  });
+  readonly tab = computed(() =>
+    Math.max(
+      0,
+      TABS.findIndex((entry) => entry.key === this.queryParams().get('tab')),
+    ),
+  );
 
   swipeStart: { x: number; y: number } | null = null;
 
   select(index: number): void {
-    this.tab.set(index);
-    this.storeService.store.patchUi({ tab: index });
+    const current = this.tab();
+    if (index === current) return;
+    if (index === 0) {
+      // Popping keeps history a single entry deep, rather than stacking Tasks on top.
+      if ((this.location.getState() as Record<string, unknown> | null)?.[FROM_TASKS]) {
+        this.location.back();
+      } else {
+        void this.router.navigate([], { queryParams: {}, replaceUrl: true });
+      }
+      return;
+    }
+    void this.router.navigate([], {
+      queryParams: { tab: TABS[index].key },
+      // Tab to tab away from Tasks swaps the entry, so one back still lands home.
+      replaceUrl: current !== 0,
+      state: { [FROM_TASKS]: true },
+    });
   }
 
   onPointerDown(event: PointerEvent): void {
