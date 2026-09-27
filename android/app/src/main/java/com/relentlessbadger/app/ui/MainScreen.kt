@@ -7,7 +7,6 @@ import android.text.format.DateFormat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -57,7 +56,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -71,7 +69,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -899,8 +896,8 @@ private fun TaskRow(
     onAdvance: () -> Unit,
     onEdit: () -> Unit,
 ) {
-    // While [tapsLocked], a press shows no ripple and the buttons fade, so a tap
-    // the guard swallows looks like it never landed rather than like it worked.
+    // While [tapsLocked] the buttons fade, so a tap the guard swallows looks like
+    // it never landed rather than like it worked.
     // Only the buttons fade: dimming the whole row would flash the task text on
     // every reorder, even when nobody is tapping.
     val buttonAlpha by animateFloatAsState(
@@ -911,16 +908,12 @@ private fun TaskRow(
     val buttonFade = Modifier.graphicsLayer { alpha = buttonAlpha }
     // Everything on the row's face is gated by [canAct], asked at the moment of
     // the tap: just after a reorder, the task under the finger may not be the
-    // one the user aimed at. The menus aren't — they already belong to a task,
-    // so they keep their ripple too.
+    // one the user aimed at. The menus aren't — they already belong to a task.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(
-                interactionSource = null,
-                indication = if (tapsLocked) null else LocalIndication.current,
-            ) { if (canAct()) onEdit() }
+            .clickable { if (canAct()) onEdit() }
             .padding(vertical = 8.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -960,10 +953,8 @@ private fun TaskRow(
         if (!scheduled) {
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
-                NoRippleWhile(tapsLocked) {
-                    IconButton(onClick = { if (canAct()) menuExpanded = true }, modifier = buttonFade) {
-                        Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
-                    }
+                IconButton(onClick = { if (canAct()) menuExpanded = true }, modifier = buttonFade) {
+                    Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
                 }
                 // Anchored to the button so the options appear where the user is
                 // already looking.
@@ -992,32 +983,19 @@ private fun TaskRow(
         } else {
             // The snooze slot, mirrored: a scheduled task can't be pushed later
             // from here, but it can be pulled to now.
-            NoRippleWhile(tapsLocked) {
-                IconButton(onClick = { if (canAct()) onAdvance() }, modifier = buttonFade) {
-                    Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
-                }
+            IconButton(onClick = { if (canAct()) onAdvance() }, modifier = buttonFade) {
+                Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
             }
         }
 
         DoneButton(
             canAct = canAct,
-            tapsLocked = tapsLocked,
             modifier = buttonFade,
             onDone = onDone,
             onDonePreviously = onDonePreviously,
             onCancel = onCancel,
         )
     }
-}
-
-/** Drops the press ripple from [content] while [locked]; see [TaskRow]. */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun NoRippleWhile(locked: Boolean, content: @Composable () -> Unit) {
-    CompositionLocalProvider(
-        LocalRippleConfiguration provides if (locked) null else LocalRippleConfiguration.current,
-        content = content,
-    )
 }
 
 /**
@@ -1031,7 +1009,6 @@ private fun NoRippleWhile(locked: Boolean, content: @Composable () -> Unit) {
 @Composable
 private fun DoneButton(
     canAct: () -> Boolean,
-    tapsLocked: Boolean,
     onDone: () -> Unit,
     onDonePreviously: () -> Unit,
     onCancel: () -> Unit,
@@ -1046,8 +1023,6 @@ private fun DoneButton(
                 .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.secondaryContainer)
                 .combinedClickable(
-                    interactionSource = null,
-                    indication = if (tapsLocked) null else LocalIndication.current,
                     role = Role.Button,
                     onClickLabel = "Mark done",
                     onLongClickLabel = "Other ways to close this task",
