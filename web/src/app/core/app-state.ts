@@ -5,6 +5,7 @@ import { GoogleAuthService } from './auth/google-auth.service';
 import { buildMonthEntries, CalendarEntry } from './domain/calendar-entries';
 import { friendlyMessage } from './domain/errors';
 import { rank } from './domain/fuzzy';
+import { NotificationSound } from './domain/notification-sound';
 import {
   CompletedTask,
   ConcludedTask,
@@ -351,6 +352,11 @@ export class AppState {
 
   async showTestNotification(): Promise<void> {
     await this.repository.showTestNotification();
+  }
+
+  /** Applied at once, unlike the Save-button settings: choosing it was the confirmation. */
+  async updateNotificationSound(sound: NotificationSound): Promise<void> {
+    await this.repository.updateNotificationSound(sound);
   }
 
   private resetTaskList(): void {

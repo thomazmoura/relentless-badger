@@ -383,7 +383,7 @@ class TaskRepository(
             scheduler.schedule(task.id, slot)
             return
         }
-        scheduler.showReminder(task, session.defaultWaitMinutes)
+        scheduler.showReminder(task, session.defaultWaitMinutes, session.notificationSound)
         settings.saveLastNotificationAt(now)
         val next = task.copy(
             nextFireAtMillis = now + task.repeatIntervalMinutes * 60_000L,
@@ -402,7 +402,8 @@ class TaskRepository(
      * real nag back.
      */
     suspend fun showTestNotification() {
-        scheduler.showTestNotification(settings.current().defaultWaitMinutes)
+        val session = settings.current()
+        scheduler.showTestNotification(session.defaultWaitMinutes, session.notificationSound)
     }
 
     /**
@@ -470,6 +471,14 @@ class TaskRepository(
      */
     suspend fun updateNotificationGapSeconds(seconds: Int) {
         settings.saveMinNotificationGapSeconds(seconds.coerceAtLeast(0))
+    }
+
+    /**
+     * Picks what nags sound like from the next one on. Local for the same reason
+     * as the gap: never flagged dirty, never pushed, never touched by a pull.
+     */
+    suspend fun updateNotificationSound(sound: NotificationSound) {
+        settings.saveNotificationSound(sound)
     }
 
     /**

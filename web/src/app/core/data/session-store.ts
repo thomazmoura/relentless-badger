@@ -1,5 +1,6 @@
 import { Signal } from '@angular/core';
 import { DEFAULT_WAIT_MINUTES, Session, SettingsDto } from '../domain/models';
+import { NotificationSound, toStorageString } from '../domain/notification-sound';
 import { BadgerStore } from './local-store';
 
 /**
@@ -11,6 +12,11 @@ export interface SettingsStore {
   current(): Promise<Session>;
   saveBaseUrl(baseUrl: string): Promise<void>;
   saveSettings(settings: SettingsDto): Promise<void>;
+  /**
+   * The sound nags play. Kept out of saveSettings: it describes this browser,
+   * not the account, so a pull must never clobber it.
+   */
+  saveNotificationSound(sound: NotificationSound): Promise<void>;
   markSettingsDirty(): Promise<void>;
   clearSettingsDirty(): Promise<void>;
   isSettingsDirty(): Promise<boolean>;
@@ -46,6 +52,10 @@ export class LocalSessionStore implements SettingsStore {
 
   async saveSettings(settings: SettingsDto): Promise<void> {
     this.store.patchSession(normalize(settings));
+  }
+
+  async saveNotificationSound(sound: NotificationSound): Promise<void> {
+    this.store.patchSession({ notificationSound: toStorageString(sound) });
   }
 
   async markSettingsDirty(): Promise<void> {

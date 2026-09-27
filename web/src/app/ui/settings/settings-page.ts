@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  ElementRef,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -6,12 +14,20 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatRadioModule } from '@angular/material/radio';
+import { MatSelect, MatSelectModule } from '@angular/material/select';
+import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
 import { CRASH_LOG } from '../../core/diagnostics/crash-log';
 import { formatDateTime, prefers24Hour } from '../../core/domain/format';
 import { MAX_WAITS } from '../../core/domain/models';
+import {
+  BUILT_IN_SOUNDS,
+  notificationSoundSource,
+  parseNotificationSound,
+} from '../../core/domain/notification-sound';
+import { AudioElementSoundPlayer } from '../../core/notify/sound-player';
 import { ConfirmDialog } from '../dialogs/confirm-dialog';
 
 /**
@@ -27,6 +43,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
     MatIconModule,
     MatInputModule,
     MatRadioModule,
+    MatSelectModule,
     MatToolbarModule,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -102,6 +119,36 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
         <button matButton [disabled]="waits().length >= maxWaits" (click)="addWait()">
           Add wait
         </button>
+
+        <div class="sound">
+          <mat-form-field appearance="outline" class="grow">
+            <mat-label>Notification sound</mat-label>
+            <mat-select
+              [value]="storedSound()"
+              (selectionChange)="chooseSound($event.source, $event.value)"
+            >
+              <mat-option value="silent">Silent</mat-option>
+              <mat-option value="system">System default</mat-option>
+              @for (sound of builtInSounds; track sound.key) {
+                <mat-option [value]="'builtin:' + sound.key">{{ sound.label }}</mat-option>
+              }
+              @if (sound().kind === 'custom') {
+                <mat-option [value]="storedSound()">{{ soundLabel() }}</mat-option>
+              }
+              <mat-option value="upload">Upload your own…</mat-option>
+            </mat-select>
+          </mat-form-field>
+          <button
+            matIconButton
+            aria-label="Play notification sound"
+            [disabled]="soundSource() === null"
+            (click)="previewSound()"
+          >
+            <mat-icon>play_arrow</mat-icon>
+          </button>
+        </div>
+        <input #soundFile type="file" accept="audio/*" hidden (change)="uploadSound($event)" />
+        <p class="hint sound-credit">Built-in sounds: Google Material, CC-BY 4.0</p>
 
         <button
           matButton="filled"
@@ -194,8 +241,18 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
       align-items: center;
       gap: 0.5rem;
     }
-    .wait .grow {
+    .wait .grow,
+    .sound .grow {
       flex: 1;
+    }
+    .sound {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .sound-credit {
+      margin: -0.75rem 0 0.5rem;
     }
     .save,
     .full {
@@ -213,8 +270,22 @@ export class SettingsPage {
   private readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
   private readonly crashLog = inject(CRASH_LOG);
+  private readonly snackBar = inject(MatSnackBar);
+  private readonly soundPlayer = new AudioElementSoundPlayer();
+  private readonly soundFile = viewChild.required<ElementRef<HTMLInputElement>>('soundFile');
 
   readonly maxWaits = MAX_WAITS;
+  readonly builtInSounds = BUILT_IN_SOUNDS;
+
+  // Read live rather than snapshotted like the Save-button fields: a sound is
+  // applied the moment it's chosen.
+  readonly storedSound = computed(() => this.state.session().notificationSound);
+  readonly sound = computed(() => parseNotificationSound(this.storedSound()));
+  readonly soundLabel = computed(() => {
+    const sound = this.sound();
+    return sound.kind === 'custom' ? sound.label : '';
+  });
+  readonly soundSource = computed(() => notificationSoundSource(this.sound()));
 
   private readonly session = this.state.session();
   readonly initialDelay = signal(String(this.session.initialDelayMinutes));
@@ -228,7 +299,8 @@ export class SettingsPage {
   readonly crashSummaryText = computed(() => {
     const { count, latestMillis } = this.crashSummary();
     if (count === 0) return 'No crashes recorded';
-    const latest = latestMillis === null ? 'unknown' : formatDateTime(latestMillis, prefers24Hour());
+    const latest =
+      latestMillis === null ? 'unknown' : formatDateTime(latestMillis, prefers24Hour());
     return `${count} ${count === 1 ? 'crash' : 'crashes'} recorded, latest ${latest}`;
   });
 
@@ -245,6 +317,53 @@ export class SettingsPage {
       this.defaultWaitIndex() < this.waits().length
     );
   });
+
+  /** Hearing a sound is how you pick one, so choosing it also plays it. */
+  async chooseSound(select: MatSelect, value: string): Promise<void> {
+    if (value === 'upload') {
+      // "Upload" is an action, not a choice: put the select back on the
+      // current sound until a file actually arrives.
+      select.value = this.storedSound();
+      this.soundFile().nativeElement.click();
+      return;
+    }
+    await this.state.updateNotificationSound(parseNotificationSound(value));
+    this.previewSound();
+  }
+
+  previewSound(): void {
+    const source = this.soundSource();
+    if (source === null) return;
+    this.soundPlayer.play(source).catch(() => {
+      this.snackBar.open('This browser could not play that sound', undefined, { duration: 4000 });
+    });
+  }
+
+  /**
+   * Stored inline in local storage as a data URL, so the size is capped well
+   * below the quota: an oversized sound must not crowd out the task database.
+   */
+  async uploadSound(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = ''; // so picking the same file again still fires change
+    if (!file) return;
+    if (file.size > MAX_SOUND_BYTES) {
+      this.snackBar.open('That sound is too big \u2014 pick one under 500 KB', undefined, {
+        duration: 4000,
+      });
+      return;
+    }
+    const uri = await readAsDataUrl(file);
+    if (uri === null || !(await isPlayable(uri))) {
+      this.snackBar.open('That file is not a sound this browser can play', undefined, {
+        duration: 4000,
+      });
+      return;
+    }
+    await this.state.updateNotificationSound({ kind: 'custom', uri, label: file.name });
+    this.previewSound();
+  }
 
   setWait(index: number, value: string): void {
     this.waits.update((waits) => waits.map((wait, i) => (i === index ? value : wait)));
@@ -351,4 +470,25 @@ function parseNonNegative(text: string): number | null {
   const trimmed = String(text).trim();
   if (!/^\d+$/.test(trimmed)) return null;
   return Number(trimmed);
+}
+
+const MAX_SOUND_BYTES = 500 * 1024;
+
+function readAsDataUrl(file: File): Promise<string | null> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null);
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+/** accept="audio/*" is only a hint, so make sure the browser can actually decode it. */
+function isPlayable(uri: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const audio = new Audio();
+    audio.onloadedmetadata = () => resolve(true);
+    audio.onerror = () => resolve(false);
+    audio.src = uri;
+  });
 }

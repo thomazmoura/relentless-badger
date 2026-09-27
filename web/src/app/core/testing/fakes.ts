@@ -13,6 +13,7 @@ import { Clock } from '../data/clock';
 import { SettingsStore } from '../data/session-store';
 import { ApiError, NetworkError } from '../domain/errors';
 import { OpenTask, Session, SettingsDto } from '../domain/models';
+import { NotificationSound, toStorageString } from '../domain/notification-sound';
 import { toIsoInstant } from '../domain/time';
 import { randomUuid } from '../domain/uuid';
 import { ReminderScheduler } from '../notify/reminder-scheduler';
@@ -270,6 +271,7 @@ export class MutableClock implements Clock {
 export interface ShownReminder {
   readonly task: OpenTask;
   readonly defaultWaitMinutes: number;
+  readonly sound: NotificationSound;
 }
 
 export class RecordingReminderScheduler implements ReminderScheduler {
@@ -280,6 +282,8 @@ export class RecordingReminderScheduler implements ReminderScheduler {
   readonly shownReminders: ShownReminder[] = [];
   /** The default wait carried by each test notification posted. */
   readonly testNotifications: number[] = [];
+  /** The sound each test notification rang with. */
+  readonly testNotificationSounds: NotificationSound[] = [];
 
   schedule(task: OpenTask): void {
     this.scheduled.set(task.id, task.nextFireAtMillis);
@@ -294,12 +298,13 @@ export class RecordingReminderScheduler implements ReminderScheduler {
     this.dismissed.push(taskId);
   }
 
-  showReminder(task: OpenTask, defaultWaitMinutes: number): void {
-    this.shownReminders.push({ task, defaultWaitMinutes });
+  showReminder(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void {
+    this.shownReminders.push({ task, defaultWaitMinutes, sound });
   }
 
-  showTestNotification(defaultWaitMinutes: number): void {
+  showTestNotification(defaultWaitMinutes: number, sound: NotificationSound): void {
     this.testNotifications.push(defaultWaitMinutes);
+    this.testNotificationSounds.push(sound);
   }
 }
 
@@ -319,6 +324,7 @@ export class FakeSettingsStore implements SettingsStore {
     defaultWaitIndex: 0,
     quietHours: [],
   };
+  notificationSound = 'system';
   dirty = false;
   baseUrl = 'http://badger.test';
 
@@ -333,6 +339,7 @@ export class FakeSettingsStore implements SettingsStore {
       defaultWaitIndex: this.settings.defaultWaitIndex,
       quietHours: this.settings.quietHours,
       settingsDirty: this.dirty,
+      notificationSound: this.notificationSound,
     };
   }
 
@@ -342,6 +349,10 @@ export class FakeSettingsStore implements SettingsStore {
 
   async saveSettings(settings: SettingsDto): Promise<void> {
     this.settings = settings;
+  }
+
+  async saveNotificationSound(sound: NotificationSound): Promise<void> {
+    this.notificationSound = toStorageString(sound);
   }
 
   async markSettingsDirty(): Promise<void> {

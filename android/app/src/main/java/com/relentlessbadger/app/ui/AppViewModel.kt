@@ -16,6 +16,7 @@ import com.relentlessbadger.app.BuildConfig
 import com.relentlessbadger.app.auth.GoogleSignIn
 import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.LoginRequest
+import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
@@ -331,6 +332,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             // Saved separately: this one stays on the device instead of syncing.
             container.repository.updateNotificationGapSeconds(minNotificationGapSeconds)
             onDone()
+        }
+    }
+
+    /** Applied at once, unlike the Save-button settings: the dialog was the confirmation. */
+    fun updateNotificationSound(sound: NotificationSound) {
+        viewModelScope.launch {
+            container.repository.updateNotificationSound(sound)
         }
     }
 

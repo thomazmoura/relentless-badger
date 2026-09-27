@@ -4,6 +4,7 @@ import { MemoryStorageDriver } from '../data/storage';
 import { CompletedTaskStore, OpenTaskStore, TitleStore } from '../data/task-store';
 import { TaskRepository } from '../data/task-repository';
 import { CompletedTask, ConcludedTask, OpenTask, Recurrence, SettingsDto } from '../domain/models';
+import { NotificationSound } from '../domain/notification-sound';
 import {
   FakeBadgerApi,
   FakeSettingsStore,
@@ -83,6 +84,14 @@ export class BadgerScenario {
       defaultWaitIndex,
       quietHours,
     });
+  }
+
+  givenNotificationSound(sound: NotificationSound): Promise<void> {
+    return this.repository.updateNotificationSound(sound);
+  }
+
+  whenNotificationSoundChosen(sound: NotificationSound): Promise<void> {
+    return this.repository.updateNotificationSound(sound);
   }
 
   /** A task known to both sides with no pending local changes. */

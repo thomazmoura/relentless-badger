@@ -45,9 +45,9 @@ class BadgerApp : Application() {
         val crashLog = CrashReporting.createLog(this)
         CrashReporting.install(this, crashLog)
         container = AppContainer(this, crashLog)
-        Notifications.ensureChannel(this)
         // Warm the token/baseUrl mirrors before any receiver touches the API.
         val session = runBlocking { container.session.current() }
+        Notifications.ensureChannel(this, session.notificationSound)
         if (session.isSignedIn) {
             // Flush anything queued while the app was dead and keep a
             // periodic pull armed.

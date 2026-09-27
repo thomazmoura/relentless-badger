@@ -9,6 +9,7 @@ import {
   SettingsDto,
   taskRecurrence,
 } from '../domain/models';
+import { NotificationSound, parseNotificationSound } from '../domain/notification-sound';
 import { computeNextFire, computeNextOccurrence, MINUTE_MILLIS } from '../domain/schedule';
 import { parseIsoInstant, toIsoInstant } from '../domain/time';
 import { nameUuidFromBytes, randomUuid } from '../domain/uuid';
@@ -389,6 +390,7 @@ export class TaskRepository {
     this.scheduler.showReminder(
       task,
       session.waitMinutes[session.defaultWaitIndex] ?? session.waitMinutes[0],
+      parseNotificationSound(session.notificationSound),
     );
     const next: OpenTask = {
       ...task,
@@ -406,7 +408,19 @@ export class TaskRepository {
    * schedule.
    */
   async showTestNotification(): Promise<void> {
-    this.scheduler.showTestNotification(defaultWaitMinutes(await this.settings.current()));
+    const session = await this.settings.current();
+    this.scheduler.showTestNotification(
+      defaultWaitMinutes(session),
+      parseNotificationSound(session.notificationSound),
+    );
+  }
+
+  /**
+   * Picks what nags sound like from the next one on. Local, like on Android:
+   * never flagged dirty, never pushed, never touched by a pull.
+   */
+  async updateNotificationSound(sound: NotificationSound): Promise<void> {
+    await this.settings.saveNotificationSound(sound);
   }
 
   /**

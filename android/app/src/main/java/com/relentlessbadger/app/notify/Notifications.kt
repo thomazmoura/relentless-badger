@@ -5,10 +5,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
+import android.net.Uri
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.relentlessbadger.app.MainActivity
 import com.relentlessbadger.app.R
+import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.db.OpenTaskEntity
 import com.relentlessbadger.app.ui.formatDuration
 
@@ -27,23 +31,83 @@ object Notifications {
      */
     const val TEST_NOTIFICATION_ID = "badger-test-notification"
 
-    fun ensureChannel(context: Context) {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            context.getString(R.string.notification_channel_name),
-            NotificationManager.IMPORTANCE_HIGH,
-        ).apply {
-            description = context.getString(R.string.notification_channel_description)
+    /**
+     * A channel's sound is fixed once it exists — only the user can change it
+     * from system settings — so each sound gets its own channel and switching
+     * sound switches channel. The system default keeps the original id, so
+     * installs that never touch the setting keep whatever the user tuned there.
+     *
+     * The channels for other sounds are deleted, leaving a single "Reminders"
+     * entry in system settings. Deleting a channel takes its notifications with
+     * it, so changing the sound clears the drawer; the nags return on their next
+     * repeat, which is a fair price for a setting touched once in a blue moon.
+     */
+    fun ensureChannel(context: Context, sound: NotificationSound): String {
+        val id = channelIdFor(sound)
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager.getNotificationChannel(id) == null) {
+            val channel = NotificationChannel(
+                id,
+                context.getString(R.string.notification_channel_name),
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = context.getString(R.string.notification_channel_description)
+                if (sound != NotificationSound.SystemDefault) setSound(soundUri(context, sound), SOUND_ATTRIBUTES)
+            }
+            manager.createNotificationChannel(channel)
         }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        manager.notificationChannels
+            .filter { it.id.startsWith(CHANNEL_ID) && it.id != id }
+            .forEach { manager.deleteNotificationChannel(it.id) }
+        return id
     }
+
+    private val SOUND_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+        .build()
+
+    private fun channelIdFor(sound: NotificationSound): String = when (sound) {
+        NotificationSound.SystemDefault -> CHANNEL_ID
+        NotificationSound.Silent -> "${CHANNEL_ID}_silent"
+        is NotificationSound.BuiltIn -> "${CHANNEL_ID}_builtin_${sound.key}"
+        is NotificationSound.Custom -> "${CHANNEL_ID}_custom_${Integer.toHexString(sound.uri.hashCode())}"
+    }
+
+    /**
+     * What [sound] plays, or null for silence. Also used to preview a choice in
+     * settings, so the preview is exactly what the channel will ring with.
+     */
+    fun soundUri(context: Context, sound: NotificationSound): Uri? = when (sound) {
+        NotificationSound.Silent -> null
+        NotificationSound.SystemDefault -> Settings.System.DEFAULT_NOTIFICATION_URI
+        is NotificationSound.BuiltIn ->
+            BUILT_IN_SOUND_RES[sound.key]?.let { Uri.parse("android.resource://${context.packageName}/$it") }
+        is NotificationSound.Custom -> Uri.parse(sound.uri)
+    }
+
+    // Referenced by id rather than resolved by name, so resource shrinking can
+    // see the sounds are used and keeps them.
+    private val BUILT_IN_SOUND_RES = mapOf(
+        "simple-01" to R.raw.badger_notification_simple_01,
+        "simple-02" to R.raw.badger_notification_simple_02,
+        "decorative-01" to R.raw.badger_notification_decorative_01,
+        "decorative-02" to R.raw.badger_notification_decorative_02,
+        "ambient" to R.raw.badger_notification_ambient,
+        "high-intensity" to R.raw.badger_notification_high_intensity,
+    )
 
     /**
      * Android shows at most three action buttons, so the reminder offers a
      * one-tap snooze by [defaultWaitMinutes], an "Other…" button that opens the
      * app on the full list of configured waits, and Done.
      */
-    fun showReminder(context: Context, task: OpenTaskEntity, defaultWaitMinutes: Int) {
+    fun showReminder(
+        context: Context,
+        task: OpenTaskEntity,
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+    ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
         val openApp = PendingIntent.getActivity(
@@ -68,7 +132,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(task.title)
@@ -95,11 +159,11 @@ object Notifications {
     }
 
     /**
-     * The debug twin of [showReminder]: same channel, icon, priority and action
+     * The debug twin of [showReminder]: same channel (so the same sound), icon, priority and action
      * buttons, so what lands on the watch is representative of a real nag. The
      * buttons only dismiss it — there is no task behind them to complete.
      */
-    fun showTestNotification(context: Context, defaultWaitMinutes: Int) {
+    fun showTestNotification(context: Context, defaultWaitMinutes: Int, sound: NotificationSound) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
         val dismiss = PendingIntent.getBroadcast(
@@ -109,7 +173,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Test notification \u2014 reminders are working")

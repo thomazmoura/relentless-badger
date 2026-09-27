@@ -50,6 +50,7 @@ export const EMPTY_SESSION: Session = {
   defaultWaitIndex: 0,
   quietHours: [],
   settingsDirty: false,
+  notificationSound: 'system',
 };
 
 const EMPTY_UI: UiState = { tab: 0, showCancelledInCalendar: false };

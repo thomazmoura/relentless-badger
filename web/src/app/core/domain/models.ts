@@ -106,6 +106,12 @@ export interface Session extends SettingsDto {
   readonly token: string | null;
   readonly email: string | null;
   readonly settingsDirty: boolean;
+  /**
+   * What a nag sounds like here, in toStorageString form. Local to this
+   * browser, like on Android: pushSettingsIfDirty builds its DTO field by
+   * field, so this never reaches the server.
+   */
+  readonly notificationSound: string;
 }
 
 export function isSignedIn(session: Session): boolean {

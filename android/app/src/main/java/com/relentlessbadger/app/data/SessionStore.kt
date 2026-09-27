@@ -32,6 +32,8 @@ data class Session(
     val minNotificationGapSeconds: Int,
     // When the last reminder was actually shown, for measuring that spacing.
     val lastNotificationAtMillis: Long?,
+    // What a nag sounds like here; local to the device, never synced.
+    val notificationSound: NotificationSound = NotificationSound.SystemDefault,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
@@ -68,6 +70,12 @@ interface SettingsStore {
 
     /** Records that a reminder was just shown, anchoring the next gap. */
     suspend fun saveLastNotificationAt(millis: Long)
+
+    /**
+     * The sound nags play. Local like the gap: a sound picked from the device is
+     * a URI that means nothing anywhere else.
+     */
+    suspend fun saveNotificationSound(sound: NotificationSound)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -87,6 +95,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val PAUSE_UNTIL = longPreferencesKey("pause_until_millis")
         val MIN_NOTIFICATION_GAP = intPreferencesKey("min_notification_gap_seconds")
         val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
+        val NOTIFICATION_SOUND = stringPreferencesKey("notification_sound")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -118,6 +127,7 @@ class SessionStore(private val context: Context) : SettingsStore {
             minNotificationGapSeconds =
                 prefs[Keys.MIN_NOTIFICATION_GAP] ?: DEFAULT_NOTIFICATION_GAP_SECONDS,
             lastNotificationAtMillis = prefs[Keys.LAST_NOTIFICATION_AT],
+            notificationSound = parseNotificationSound(prefs[Keys.NOTIFICATION_SOUND]),
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -167,6 +177,10 @@ class SessionStore(private val context: Context) : SettingsStore {
 
     override suspend fun saveLastNotificationAt(millis: Long) {
         context.dataStore.edit { it[Keys.LAST_NOTIFICATION_AT] = millis }
+    }
+
+    override suspend fun saveNotificationSound(sound: NotificationSound) {
+        context.dataStore.edit { it[Keys.NOTIFICATION_SOUND] = sound.toStorageString() }
     }
 
     override suspend fun markSettingsDirty() {

@@ -221,6 +221,13 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
 
+            NotificationSoundSetting(
+                current = session.notificationSound,
+                onChosen = viewModel::updateNotificationSound,
+            )
+
+            Spacer(Modifier.height(24.dp))
+
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),

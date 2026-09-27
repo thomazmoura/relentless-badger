@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.db.OpenTaskEntity
 
 /**
@@ -28,11 +29,14 @@ interface ReminderScheduler {
     /** Clears the currently shown reminder without touching the scheduled alarm. */
     fun dismissNotification(taskId: String)
 
-    /** [defaultWaitMinutes] backs the notification's one-tap Wait button. */
-    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int)
+    /**
+     * [defaultWaitMinutes] backs the notification's one-tap Wait button; [sound]
+     * is what it rings with.
+     */
+    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound)
 
     /** Posts the reminder-shaped notification behind the Advanced settings button. */
-    fun showTestNotification(defaultWaitMinutes: Int)
+    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -61,12 +65,12 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
         Notifications.cancel(context, taskId)
     }
 
-    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int) {
-        Notifications.showReminder(context, task, defaultWaitMinutes)
+    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound) {
+        Notifications.showReminder(context, task, defaultWaitMinutes, sound)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int) {
-        Notifications.showTestNotification(context, defaultWaitMinutes)
+    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound) {
+        Notifications.showTestNotification(context, defaultWaitMinutes, sound)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

@@ -1,7 +1,9 @@
 import { signal } from '@angular/core';
 import { formatDuration } from '../domain/format';
 import { OpenTask } from '../domain/models';
+import { NotificationSound, notificationSoundSource } from '../domain/notification-sound';
 import { ReminderScheduler, TEST_NOTIFICATION_ID } from './reminder-scheduler';
+import { AudioElementSoundPlayer, SoundPlayer } from './sound-player';
 
 /**
  * The browser's stand-in for AlarmManager.
@@ -25,8 +27,8 @@ const LEADER_STALE_MILLIS = 10_000;
 
 /** Where a reminder is actually shown. Faked in tests. */
 export interface NotificationPresenter {
-  show(task: OpenTask, defaultWaitMinutes: number): void;
-  showTest(defaultWaitMinutes: number): void;
+  show(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void;
+  showTest(defaultWaitMinutes: number, sound: NotificationSound): void;
   dismiss(taskId: string): void;
 }
 
@@ -77,12 +79,12 @@ export class WebReminderScheduler implements ReminderScheduler {
     this.presenter.dismiss(taskId);
   }
 
-  showReminder(task: OpenTask, defaultWaitMinutes: number): void {
-    this.presenter.show(task, defaultWaitMinutes);
+  showReminder(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void {
+    this.presenter.show(task, defaultWaitMinutes, sound);
   }
 
-  showTestNotification(defaultWaitMinutes: number): void {
-    this.presenter.showTest(defaultWaitMinutes);
+  showTestNotification(defaultWaitMinutes: number, sound: NotificationSound): void {
+    this.presenter.showTest(defaultWaitMinutes, sound);
   }
 
   async requestPermission(): Promise<NotificationPermission> {
@@ -159,12 +161,19 @@ export class WebReminderScheduler implements ReminderScheduler {
  * The Android notification has three actions (Wait / Other… / Done); the web
  * allows two, so "Other…" becomes the notification body tap, which opens the
  * app on the wait picker.
+ *
+ * A chosen sound is played by the page and the notification posted silent, so
+ * the OS doesn't ring over it. Only the leader tab presents, so a nag rings
+ * once however many tabs are open.
  */
 export class ServiceWorkerNotificationPresenter implements NotificationPresenter {
-  constructor(private readonly registration: () => Promise<ServiceWorkerRegistration | null>) {}
+  constructor(
+    private readonly registration: () => Promise<ServiceWorkerRegistration | null>,
+    private readonly player: SoundPlayer = new AudioElementSoundPlayer(),
+  ) {}
 
-  show(task: OpenTask, defaultWaitMinutes: number): void {
-    this.post(task.id, task.title, defaultWaitMinutes);
+  show(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void {
+    this.post(task.id, task.title, defaultWaitMinutes, sound);
   }
 
   /**
@@ -173,16 +182,22 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
    * nothing — App ignores actions carrying the test id, because there is no
    * task behind them to complete.
    */
-  showTest(defaultWaitMinutes: number): void {
+  showTest(defaultWaitMinutes: number, sound: NotificationSound): void {
     this.post(
       TEST_NOTIFICATION_ID,
       'Test notification \u2014 reminders are working',
       defaultWaitMinutes,
+      sound,
     );
   }
 
-  private post(taskId: string, body: string, defaultWaitMinutes: number): void {
-    void this.registration().then((registration) => {
+  private post(
+    taskId: string,
+    body: string,
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+  ): void {
+    void this.registration().then(async (registration) => {
       if (
         !registration ||
         typeof Notification === 'undefined' ||
@@ -194,6 +209,7 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
         body,
         tag: taskId,
         requireInteraction: true,
+        silent: !(await this.osShouldRing(sound)),
         data: { taskId, waitMinutes: defaultWaitMinutes },
         icon: 'icons/icon-192x192.png',
         badge: 'icons/icon-96x96.png',
@@ -203,6 +219,23 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
         ],
       } as NotificationOptions);
     });
+  }
+
+  /**
+   * Whether the notification should carry the OS sound. A chosen sound the
+   * browser refuses to play (no user gesture on the page yet) falls back to the
+   * OS sound: a nag that rings differently beats one that doesn't ring at all.
+   */
+  private async osShouldRing(sound: NotificationSound): Promise<boolean> {
+    if (sound.kind === 'silent') return false;
+    const source = notificationSoundSource(sound);
+    if (source === null) return true;
+    try {
+      await this.player.play(source);
+      return false;
+    } catch {
+      return true;
+    }
   }
 
   dismiss(taskId: string): void {

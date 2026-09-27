@@ -1,4 +1,5 @@
 import { OpenTask } from '../domain/models';
+import { NotificationSound } from '../domain/notification-sound';
 
 /**
  * Arms and cancels a task's nags. On Android this is AlarmManager; on the web
@@ -10,10 +11,11 @@ export interface ReminderScheduler {
   schedule(task: OpenTask): void;
   cancel(taskId: string): void;
   dismissNotification(taskId: string): void;
-  showReminder(task: OpenTask, defaultWaitMinutes: number): void;
+  /** sound is what the nag rings with. */
+  showReminder(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void;
 
   /** Posts the reminder-shaped notification behind the Advanced settings button. */
-  showTestNotification(defaultWaitMinutes: number): void;
+  showTestNotification(defaultWaitMinutes: number, sound: NotificationSound): void;
 }
 
 /**
