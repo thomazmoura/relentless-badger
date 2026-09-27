@@ -342,6 +342,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Applied at once, like the sound it goes with. */
+    fun updateSoundOnAlarmStream(on: Boolean) {
+        viewModelScope.launch {
+            container.repository.updateSoundOnAlarmStream(on)
+        }
+    }
+
     fun changeServerUrl(url: String) {
         launchBusy {
             container.repository.changeServer(url)

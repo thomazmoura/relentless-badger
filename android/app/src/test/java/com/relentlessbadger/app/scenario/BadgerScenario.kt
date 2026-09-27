@@ -112,6 +112,12 @@ class BadgerScenario {
     suspend fun whenNotificationSoundChosen(sound: NotificationSound) =
         repository.updateNotificationSound(sound)
 
+    suspend fun givenSoundOnAlarmStream(on: Boolean) =
+        repository.updateSoundOnAlarmStream(on)
+
+    suspend fun whenSoundOnAlarmStreamChosen(on: Boolean) =
+        repository.updateSoundOnAlarmStream(on)
+
     /** A task known to both sides with no pending local changes. */
     suspend fun givenSyncedTask(title: String): OpenTaskEntity {
         val dto = server.seedOpenTask(title)

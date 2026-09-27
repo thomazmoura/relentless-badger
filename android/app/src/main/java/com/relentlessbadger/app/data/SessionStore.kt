@@ -34,6 +34,8 @@ data class Session(
     val lastNotificationAtMillis: Long?,
     // What a nag sounds like here; local to the device, never synced.
     val notificationSound: NotificationSound = NotificationSound.SystemDefault,
+    // Whether that sound plays at alarm volume, so vibrate mode can't mute it.
+    val soundOnAlarmStream: Boolean = false,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
@@ -76,6 +78,12 @@ interface SettingsStore {
      * a URI that means nothing anywhere else.
      */
     suspend fun saveNotificationSound(sound: NotificationSound)
+
+    /**
+     * Whether nags ring on the alarm stream. Local like the sound itself: how
+     * loud a phone should be is a property of that phone.
+     */
+    suspend fun saveSoundOnAlarmStream(on: Boolean)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -96,6 +104,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val MIN_NOTIFICATION_GAP = intPreferencesKey("min_notification_gap_seconds")
         val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
         val NOTIFICATION_SOUND = stringPreferencesKey("notification_sound")
+        val SOUND_ON_ALARM_STREAM = booleanPreferencesKey("sound_on_alarm_stream")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -128,6 +137,7 @@ class SessionStore(private val context: Context) : SettingsStore {
                 prefs[Keys.MIN_NOTIFICATION_GAP] ?: DEFAULT_NOTIFICATION_GAP_SECONDS,
             lastNotificationAtMillis = prefs[Keys.LAST_NOTIFICATION_AT],
             notificationSound = parseNotificationSound(prefs[Keys.NOTIFICATION_SOUND]),
+            soundOnAlarmStream = prefs[Keys.SOUND_ON_ALARM_STREAM] ?: false,
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -181,6 +191,10 @@ class SessionStore(private val context: Context) : SettingsStore {
 
     override suspend fun saveNotificationSound(sound: NotificationSound) {
         context.dataStore.edit { it[Keys.NOTIFICATION_SOUND] = sound.toStorageString() }
+    }
+
+    override suspend fun saveSoundOnAlarmStream(on: Boolean) {
+        context.dataStore.edit { it[Keys.SOUND_ON_ALARM_STREAM] = on }
     }
 
     override suspend fun markSettingsDirty() {

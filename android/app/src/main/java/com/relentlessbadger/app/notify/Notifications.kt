@@ -41,9 +41,16 @@ object Notifications {
      * entry in system settings. Deleting a channel takes its notifications with
      * it, so changing the sound clears the drawer; the nags return on their next
      * repeat, which is a fair price for a setting touched once in a blue moon.
+     *
+     * The audio usage is just as fixed, so [alarmStream] is part of the id too.
+     * An alarm-usage sound follows the alarm volume rather than the ringer, which
+     * is what lets it ring on vibrate — and, on most builds, through Do Not
+     * Disturb whenever alarms are allowed. The system default has to name its
+     * sound explicitly there, since leaving it unset means notification usage.
      */
-    fun ensureChannel(context: Context, sound: NotificationSound): String {
-        val id = channelIdFor(sound)
+    fun ensureChannel(context: Context, sound: NotificationSound, alarmStream: Boolean): String {
+        val onAlarm = alarmStream && sound != NotificationSound.Silent
+        val id = channelIdFor(sound, onAlarm)
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(id) == null) {
             val channel = NotificationChannel(
@@ -52,7 +59,9 @@ object Notifications {
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = context.getString(R.string.notification_channel_description)
-                if (sound != NotificationSound.SystemDefault) setSound(soundUri(context, sound), SOUND_ATTRIBUTES)
+                if (onAlarm || sound != NotificationSound.SystemDefault) {
+                    setSound(soundUri(context, sound), audioAttributesFor(onAlarm))
+                }
             }
             manager.createNotificationChannel(channel)
         }
@@ -62,16 +71,20 @@ object Notifications {
         return id
     }
 
-    private val SOUND_ATTRIBUTES: AudioAttributes = AudioAttributes.Builder()
-        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+    /** Shared with the settings preview, so it plays on the stream the channel will. */
+    fun audioAttributesFor(alarmStream: Boolean): AudioAttributes = AudioAttributes.Builder()
+        .setUsage(if (alarmStream) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
-    private fun channelIdFor(sound: NotificationSound): String = when (sound) {
-        NotificationSound.SystemDefault -> CHANNEL_ID
-        NotificationSound.Silent -> "${CHANNEL_ID}_silent"
-        is NotificationSound.BuiltIn -> "${CHANNEL_ID}_builtin_${sound.key}"
-        is NotificationSound.Custom -> "${CHANNEL_ID}_custom_${Integer.toHexString(sound.uri.hashCode())}"
+    private fun channelIdFor(sound: NotificationSound, alarmStream: Boolean): String {
+        val base = if (alarmStream) "${CHANNEL_ID}_alarm" else CHANNEL_ID
+        return when (sound) {
+            NotificationSound.SystemDefault -> base
+            NotificationSound.Silent -> "${base}_silent"
+            is NotificationSound.BuiltIn -> "${base}_builtin_${sound.key}"
+            is NotificationSound.Custom -> "${base}_custom_${Integer.toHexString(sound.uri.hashCode())}"
+        }
     }
 
     /**
@@ -107,6 +120,7 @@ object Notifications {
         task: OpenTaskEntity,
         defaultWaitMinutes: Int,
         sound: NotificationSound,
+        alarmStream: Boolean,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
@@ -132,7 +146,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound))
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, alarmStream))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(task.title)
@@ -163,7 +177,12 @@ object Notifications {
      * buttons, so what lands on the watch is representative of a real nag. The
      * buttons only dismiss it — there is no task behind them to complete.
      */
-    fun showTestNotification(context: Context, defaultWaitMinutes: Int, sound: NotificationSound) {
+    fun showTestNotification(
+        context: Context,
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        alarmStream: Boolean,
+    ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
         val dismiss = PendingIntent.getBroadcast(
@@ -173,7 +192,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound))
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, alarmStream))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Test notification \u2014 reminders are working")

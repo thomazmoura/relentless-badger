@@ -31,12 +31,12 @@ interface ReminderScheduler {
 
     /**
      * [defaultWaitMinutes] backs the notification's one-tap Wait button; [sound]
-     * is what it rings with.
+     * is what it rings with, at alarm volume when [alarmStream] is set.
      */
-    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound)
+    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean)
 
     /** Posts the reminder-shaped notification behind the Advanced settings button. */
-    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound)
+    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -65,12 +65,17 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
         Notifications.cancel(context, taskId)
     }
 
-    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound) {
-        Notifications.showReminder(context, task, defaultWaitMinutes, sound)
+    override fun showReminder(
+        task: OpenTaskEntity,
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        alarmStream: Boolean,
+    ) {
+        Notifications.showReminder(context, task, defaultWaitMinutes, sound, alarmStream)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound) {
-        Notifications.showTestNotification(context, defaultWaitMinutes, sound)
+    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean) {
+        Notifications.showTestNotification(context, defaultWaitMinutes, sound, alarmStream)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

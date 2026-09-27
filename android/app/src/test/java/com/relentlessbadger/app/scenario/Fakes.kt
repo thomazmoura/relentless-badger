@@ -245,10 +245,14 @@ class RecordingReminderScheduler : ReminderScheduler {
     /** The sound each test notification rang with. */
     val testNotificationSounds = mutableListOf<NotificationSound>()
 
+    /** Whether each test notification rang on the alarm stream. */
+    val testNotificationAlarmStreams = mutableListOf<Boolean>()
+
     data class ShownReminder(
         val task: OpenTaskEntity,
         val defaultWaitMinutes: Int,
         val sound: NotificationSound,
+        val alarmStream: Boolean,
     )
 
     override fun canScheduleExact(): Boolean = true
@@ -266,13 +270,19 @@ class RecordingReminderScheduler : ReminderScheduler {
         dismissed += taskId
     }
 
-    override fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound) {
-        shownReminders += ShownReminder(task, defaultWaitMinutes, sound)
+    override fun showReminder(
+        task: OpenTaskEntity,
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        alarmStream: Boolean,
+    ) {
+        shownReminders += ShownReminder(task, defaultWaitMinutes, sound, alarmStream)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound) {
+    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean) {
         testNotifications += defaultWaitMinutes
         testNotificationSounds += sound
+        testNotificationAlarmStreams += alarmStream
     }
 }
 
@@ -291,6 +301,7 @@ class FakeSettingsStore : SettingsStore {
     var minNotificationGapSeconds = DEFAULT_NOTIFICATION_GAP_SECONDS
     var lastNotificationAtMillis: Long? = null
     var notificationSound: NotificationSound = NotificationSound.SystemDefault
+    var soundOnAlarmStream = false
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -307,6 +318,7 @@ class FakeSettingsStore : SettingsStore {
         minNotificationGapSeconds = minNotificationGapSeconds,
         lastNotificationAtMillis = lastNotificationAtMillis,
         notificationSound = notificationSound,
+        soundOnAlarmStream = soundOnAlarmStream,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {
@@ -331,6 +343,10 @@ class FakeSettingsStore : SettingsStore {
 
     override suspend fun saveNotificationSound(sound: NotificationSound) {
         notificationSound = sound
+    }
+
+    override suspend fun saveSoundOnAlarmStream(on: Boolean) {
+        soundOnAlarmStream = on
     }
 
     override suspend fun markSettingsDirty() {

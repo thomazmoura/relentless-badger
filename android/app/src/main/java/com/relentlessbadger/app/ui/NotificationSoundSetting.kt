@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,11 +45,17 @@ import com.relentlessbadger.app.notify.Notifications
  * that previews each option as it is tapped, so picking a sound means hearing
  * it. The dialog's choice is applied on OK; a sound from the device picker is
  * applied straight away, since picking it there was already the decision.
+ *
+ * Below it, the opt-in to ring at alarm volume. Android-only by nature: a web
+ * page can't choose the stream its notifications play on, so the PWA has no
+ * counterpart to mirror.
  */
 @Composable
 fun NotificationSoundSetting(
     current: NotificationSound,
     onChosen: (NotificationSound) -> Unit,
+    alarmStream: Boolean,
+    onAlarmStreamChanged: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var dialogOpen by rememberSaveable { mutableStateOf(false) }
@@ -70,10 +77,35 @@ fun NotificationSoundSetting(
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
+    // Silent has nothing to play on any stream.
+    val canUseAlarmStream = current != NotificationSound.Silent
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+    ) {
+        Text(
+            "Play even on vibrate",
+            style = MaterialTheme.typography.titleSmall,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(
+            checked = alarmStream && canUseAlarmStream,
+            onCheckedChange = onAlarmStreamChanged,
+            enabled = canUseAlarmStream,
+        )
+    }
+    Text(
+        "Uses the alarm volume instead of the notification volume, so reminders " +
+            "sound even when the phone is on vibrate or silent.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
     if (dialogOpen) {
         NotificationSoundDialog(
             context = context,
             current = current,
+            alarmStream = alarmStream,
             onDismiss = { dialogOpen = false },
             onChosen = {
                 dialogOpen = false
@@ -87,13 +119,14 @@ fun NotificationSoundSetting(
 private fun NotificationSoundDialog(
     context: Context,
     current: NotificationSound,
+    alarmStream: Boolean,
     onDismiss: () -> Unit,
     onChosen: (NotificationSound) -> Unit,
 ) {
     // Stored as its string form, which is what makes a sealed type saveable.
     var selectedStored by rememberSaveable { mutableStateOf(current.toStorageString()) }
     val selected = parseNotificationSound(selectedStored)
-    val preview = remember { SoundPreview(context) }
+    val preview = remember(alarmStream) { SoundPreview(context, alarmStream) }
     DisposableEffect(Unit) { onDispose { preview.stop() } }
 
     val devicePicker = rememberLauncherForActivityResult(
@@ -163,14 +196,20 @@ private fun NotificationSoundDialog(
     )
 }
 
-/** Plays one option at a time; tapping the next cuts the last one off. */
-private class SoundPreview(private val context: Context) {
+/**
+ * Plays one option at a time; tapping the next cuts the last one off. Plays on
+ * the stream the reminders will, so what the preview's volume suggests is true.
+ */
+private class SoundPreview(private val context: Context, private val alarmStream: Boolean) {
     private var playing: Ringtone? = null
 
     fun play(sound: NotificationSound) {
         stop()
         val uri = Notifications.soundUri(context, sound) ?: return
-        playing = RingtoneManager.getRingtone(context, uri)?.also { it.play() }
+        playing = RingtoneManager.getRingtone(context, uri)?.also {
+            it.audioAttributes = Notifications.audioAttributesFor(alarmStream)
+            it.play()
+        }
     }
 
     fun stop() {
