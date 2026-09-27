@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Texugo Insistente</string>
+    <string name="notification_channel_name">Lembretes de tarefas</string>
+    <string name="notification_channel_description">Lembretes insistentes para tarefas abertas</string>
+</resources>

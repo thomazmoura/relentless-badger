@@ -1,4 +1,5 @@
 import { recurrenceOf } from '../../core/domain/models';
+import { PORTUGUESE } from '../../core/i18n/strings';
 import { RecurringReport, RecurringReportItem } from '../../core/domain/recurring-report';
 import { epochFor, systemZone } from '../../core/domain/time';
 import { cadenceLabel, renderRecurringReport } from './recurring-export';
@@ -80,5 +81,12 @@ describe('renderRecurringReport', () => {
     const text = renderRecurringReport({ sections: [] }, 'Recurring', true, 'plain');
 
     expect(text).toBe('RelentlessBadger — Recurring\n\nNo recurring tasks.');
+  });
+
+  it('names the sections and the brand in Portuguese', () => {
+    expect(cadenceLabel({ everyN: 4, unit: 'days' }, PORTUGUESE)).toBe('A cada 4 dias');
+    expect(renderRecurringReport({ sections: [] }, 'Recorrentes', true, 'plain', PORTUGUESE)).toBe(
+      'Texugo Insistente — Recorrentes\n\nNenhuma tarefa recorrente.',
+    );
   });
 });

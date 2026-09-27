@@ -2,6 +2,7 @@ package com.relentlessbadger.app
 
 import android.Manifest
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -31,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,15 +43,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
+import com.relentlessbadger.app.data.Session
 import com.relentlessbadger.app.notify.Notifications
 import com.relentlessbadger.app.ui.AppViewModel
 import com.relentlessbadger.app.ui.CalendarScreen
 import com.relentlessbadger.app.ui.DailyOverviewScreen
+import com.relentlessbadger.app.ui.LocalStrings
 import com.relentlessbadger.app.ui.MainScreen
 import com.relentlessbadger.app.ui.ReportsScreen
 import com.relentlessbadger.app.ui.SettingsScreen
 import com.relentlessbadger.app.ui.SignInScreen
+import com.relentlessbadger.app.ui.Strings
 import com.relentlessbadger.app.ui.theme.BadgerTheme
 import kotlinx.coroutines.launch
 
@@ -108,10 +114,28 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class Tab(val label: String, val icon: ImageVector) {
-    Tasks("Tasks", Icons.Filled.Checklist),
-    Calendar("Calendar", Icons.Filled.CalendarMonth),
-    Reports("Reports", Icons.Filled.Assessment),
+private enum class Tab(val label: (Strings) -> String, val icon: ImageVector) {
+    Tasks({ it.tabTasks }, Icons.Filled.Checklist),
+    Calendar({ it.tabCalendar }, Icons.Filled.CalendarMonth),
+    Reports({ it.tabReports }, Icons.Filled.Assessment),
+}
+
+/**
+ * Hands the chosen language's labels down the tree, and restates the
+ * configuration's locale to match so what Material renders itself — the date
+ * picker's month and weekday names — speaks the same language as the labels.
+ */
+@Composable
+private fun ProvideStrings(strings: Strings, content: @Composable () -> Unit) {
+    val configuration = LocalConfiguration.current
+    val localized = remember(configuration, strings) {
+        Configuration(configuration).apply { setLocale(strings.locale) }
+    }
+    CompositionLocalProvider(
+        LocalStrings provides strings,
+        LocalConfiguration provides localized,
+        content = content,
+    )
 }
 
 @Composable
@@ -122,6 +146,24 @@ private fun App(
     onWaitPickerHandled: () -> Unit,
 ) {
     val session by viewModel.session.collectAsState()
+    // Read against the session and the configuration, so both a new choice in
+    // Settings and a device language change (with "device default") show through.
+    val configuration = LocalConfiguration.current
+    val strings = remember(session, configuration) { viewModel.strings }
+    ProvideStrings(strings) {
+        AppContent(viewModel, session, requestNotificationPermission, waitPickerTaskId, onWaitPickerHandled)
+    }
+}
+
+@Composable
+private fun AppContent(
+    viewModel: AppViewModel,
+    session: Session?,
+    requestNotificationPermission: () -> Unit,
+    waitPickerTaskId: String?,
+    onWaitPickerHandled: () -> Unit,
+) {
+    val s = LocalStrings.current
     // Above the when, so the selected tab survives the Settings round-trip.
     val pagerState = rememberPagerState(initialPage = Tab.Tasks.ordinal) { Tab.entries.size }
     var showSettings by remember { mutableStateOf(false) }
@@ -142,11 +184,11 @@ private fun App(
             CircularProgressIndicator()
         }
 
-        !session!!.isSignedIn -> SignInScreen(viewModel)
+        !session.isSignedIn -> SignInScreen(viewModel)
 
         showSettings -> SettingsScreen(
             viewModel = viewModel,
-            session = session!!,
+            session = session,
             onBack = { showSettings = false },
         )
 
@@ -185,8 +227,8 @@ private fun App(
                             NavigationBarItem(
                                 selected = pagerState.currentPage == t.ordinal,
                                 onClick = { scope.launch { pagerState.animateScrollToPage(t.ordinal) } },
-                                icon = { Icon(t.icon, contentDescription = t.label) },
-                                label = { Text(t.label) },
+                                icon = { Icon(t.icon, contentDescription = t.label(s)) },
+                                label = { Text(t.label(s)) },
                             )
                         }
                     }

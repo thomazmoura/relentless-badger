@@ -34,6 +34,9 @@ class TaskRepository(
     // Read per call, not captured: the quiet hours are wall-clock, so a device
     // that changes zone should honour them in the zone it is in now.
     private val zoneSource: () -> ZoneId = ZoneId::systemDefault,
+    // Read per call too: the device language can change while the app lives,
+    // and a reminder should follow a "device default" choice to the new one.
+    private val deviceLanguageSource: () -> String = ::deviceLanguageTag,
 ) {
 
     /**
@@ -388,6 +391,7 @@ class TaskRepository(
             session.defaultWaitMinutes,
             session.notificationSound,
             session.soundStream,
+            languageOf(session),
         )
         settings.saveLastNotificationAt(now)
         val next = task.copy(
@@ -412,8 +416,12 @@ class TaskRepository(
             session.defaultWaitMinutes,
             session.notificationSound,
             session.soundStream,
+            languageOf(session),
         )
     }
+
+    /** The language [session] asks for, resolving "device default" against the device now. */
+    fun languageOf(session: Session): Language = resolveLanguage(session.language, deviceLanguageSource())
 
     /**
      * Re-arms every open task's alarm after a reboot, an app update, or a change
@@ -499,15 +507,21 @@ class TaskRepository(
     }
 
     /**
+     * Switches the language the app and its reminders speak. Local like the
+     * sound: never flagged dirty, never pushed, never touched by a pull.
+     */
+    suspend fun updateLanguage(language: LanguagePreference) {
+        settings.saveLanguage(language)
+    }
+
+    /**
      * Points the app at a new server. Keeps the session and all local data;
      * pending work will sync to the new server.
      */
     suspend fun changeServer(baseUrl: String) {
         val normalized = baseUrl.trim().trimEnd('/')
-        require(normalized.isNotBlank()) { "Enter the server URL first." }
-        requireNotNull("$normalized/".toHttpUrlOrNull()) {
-            "That doesn't look like a valid http(s) URL."
-        }
+        if (normalized.isBlank()) throw InvalidServerUrlException(blank = true)
+        if ("$normalized/".toHttpUrlOrNull() == null) throw InvalidServerUrlException(blank = false)
         settings.saveBaseUrl(normalized)
         syncScheduler.requestSync()
     }
@@ -820,3 +834,11 @@ fun computeNextFire(
     val periodsElapsed = (nowMillis - first) / interval + 1
     return first + periodsElapsed * interval
 }
+
+/**
+ * A server URL [TaskRepository.changeServer] refused. Typed rather than carrying
+ * a sentence, so the UI can say why in whichever language it speaks.
+ */
+class InvalidServerUrlException(val blank: Boolean) : IllegalArgumentException(
+    if (blank) "Enter the server URL first." else "That doesn't look like a valid http(s) URL.",
+)

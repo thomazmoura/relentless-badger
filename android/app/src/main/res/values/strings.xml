@@ -3,7 +3,4 @@
     <string name="app_name">Relentless Badger</string>
     <string name="notification_channel_name">Task reminders</string>
     <string name="notification_channel_description">Nagging reminders for open tasks</string>
-    <string name="notification_action_done">Done</string>
-    <string name="notification_action_wait">Wait %1$s</string>
-    <string name="notification_action_other">Other…</string>
 </resources>

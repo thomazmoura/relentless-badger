@@ -30,4 +30,38 @@ class FormatDateTimeTest {
     fun `24-hour format uses zero-padded 24h clock`() {
         assertEquals("Jul 17, 15:05", formatDateTime(afternoon, use24Hour = true))
     }
+
+    @Test
+    fun `portuguese puts the day before the month`() {
+        assertEquals("17 de jul, 15:05", formatDateTime(afternoon, use24Hour = true, Strings.Portuguese))
+    }
+
+    @Test
+    fun `portuguese day titles name the weekday in portuguese`() {
+        assertEquals(
+            "sexta-feira, 17 de jul",
+            formatDayTitle(java.time.LocalDate.of(2026, 7, 17), Strings.Portuguese),
+        )
+    }
+
+    @Test
+    fun `durations spell minutes the portuguese way`() {
+        assertEquals("45min", formatDuration(45, Strings.Portuguese))
+        assertEquals("1h 30min", formatDuration(90, Strings.Portuguese))
+        assertEquals("1h 30m", formatDuration(90))
+    }
+
+    @Test
+    fun `recurrence reads in portuguese`() {
+        assertEquals(
+            "a cada 3 dias",
+            recurrenceLabel(com.relentlessbadger.app.data.Recurrence(3, com.relentlessbadger.app.data.RecurUnit.DAYS, 0), Strings.Portuguese),
+        )
+    }
+
+    @Test
+    fun `reminders are titled with the badger and the task`() {
+        assertEquals("Badger: water plants", Strings.English.notificationTitle("water plants"))
+        assertEquals("Texugo: regar as plantas", Strings.Portuguese.notificationTitle("regar as plantas"))
+    }
 }

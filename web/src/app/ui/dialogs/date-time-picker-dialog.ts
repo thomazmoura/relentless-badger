@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatTimepickerModule } from '@angular/material/timepicker';
 import { epochFor, partsAt, systemZone } from '../../core/domain/time';
+import { I18n } from '../../core/i18n/i18n.service';
 
 export interface DateTimePickerData {
   readonly title: string;
@@ -41,7 +42,7 @@ export interface DateTimePickerData {
     <h2 mat-dialog-title>{{ data.title }}</h2>
     <mat-dialog-content>
       <mat-form-field appearance="outline" class="field">
-        <mat-label>Date</mat-label>
+        <mat-label>{{ s().date }}</mat-label>
         <input
           matInput
           [matDatepicker]="datePicker"
@@ -53,20 +54,20 @@ export interface DateTimePickerData {
         <mat-datepicker #datePicker />
       </mat-form-field>
       <mat-form-field appearance="outline" class="field">
-        <mat-label>Time</mat-label>
+        <mat-label>{{ s().time }}</mat-label>
         <input matInput [matTimepicker]="timePicker" [(ngModel)]="time" />
         <mat-timepicker-toggle matIconSuffix [for]="timePicker" />
         <mat-timepicker #timePicker />
       </mat-form-field>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button matButton mat-dialog-close>Cancel</button>
+      <button matButton mat-dialog-close>{{ s().cancel }}</button>
       <button
         matButton="filled"
         [disabled]="!date() || !time() || outOfRange()"
         (click)="confirm()"
       >
-        Set
+        {{ s().setAction }}
       </button>
     </mat-dialog-actions>
   `,
@@ -79,6 +80,7 @@ export interface DateTimePickerData {
   `,
 })
 export class DateTimePickerDialog {
+  readonly s = inject(I18n).strings;
   readonly data = inject<DateTimePickerData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<DateTimePickerDialog, number>);
   private readonly zone = systemZone();

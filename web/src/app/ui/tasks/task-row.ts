@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, output } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatMenuModule } from '@angular/material/menu';
@@ -9,6 +9,8 @@ import {
   relativeFuture,
 } from '../../core/domain/format';
 import { OpenTask, taskRecurrence } from '../../core/domain/models';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-guard';
 
 /**
@@ -28,14 +30,14 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
         <span class="title">{{ task().title }}</span>
         <span class="subtitle">{{ subtitle() }}</span>
         @if (recurrence(); as rule) {
-          <span class="recurrence">{{ recurrenceLabel(rule) }}</span>
+          <span class="recurrence">{{ recurrenceLabel(rule, s()) }}</span>
         }
       </div>
 
       @if (!scheduled()) {
         <button
           matIconButton
-          aria-label="Snooze"
+          [attr.aria-label]="s().snooze"
           [disableRipple]="tapsLocked()"
           [matMenuTriggerFor]="snoozeMenu"
           (click)="$event.stopPropagation()"
@@ -46,12 +48,12 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
           @for (minutes of waitMinutes(); track minutes) {
             <button mat-menu-item (click)="snooze.emit(minutes)">
               <mat-icon>snooze</mat-icon>
-              <span>Wait {{ formatDuration(minutes) }}</span>
+              <span>{{ s().waitFor(formatDuration(minutes, s())) }}</span>
             </button>
           }
           <button mat-menu-item (click)="pickExactWait.emit()">
             <mat-icon>schedule</mat-icon>
-            <span>Pick a date &amp; time…</span>
+            <span>{{ s().pickDateTime }}</span>
           </button>
         </mat-menu>
       } @else {
@@ -59,7 +61,7 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
              from here, but it can be pulled to now. -->
         <button
           matIconButton
-          aria-label="Start nagging now"
+          [attr.aria-label]="s().startNaggingNow"
           [disableRipple]="tapsLocked()"
           (click)="$event.stopPropagation(); advance.emit()"
         >
@@ -70,7 +72,7 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
       <button
         class="done"
         type="button"
-        aria-label="Mark done"
+        [attr.aria-label]="s().markDone"
         [matMenuTriggerFor]="closeMenu"
         #closeTrigger="matMenuTrigger"
         (click)="onDoneClick($event)"
@@ -84,11 +86,11 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
       <mat-menu #closeMenu>
         <button mat-menu-item (click)="donePreviously.emit()">
           <mat-icon>history</mat-icon>
-          <span>Done previously</span>
+          <span>{{ s().donePreviously }}</span>
         </button>
         <button mat-menu-item (click)="cancelTask.emit()">
           <mat-icon>close</mat-icon>
-          <span>Cancel task</span>
+          <span>{{ s().cancelTask }}</span>
         </button>
       </mat-menu>
     </div>
@@ -149,6 +151,7 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
   `,
 })
 export class TaskRow {
+  readonly s = inject(I18n).strings;
   readonly task = input.required<OpenTask>();
   readonly nowMillis = input.required<number>();
   readonly use24Hour = input(false);
@@ -173,10 +176,21 @@ export class TaskRow {
 
   readonly subtitle = computed(() => {
     const task = this.task();
+    const s = this.s();
     if (this.scheduled()) {
-      return `starts ${formatDateTime(task.firstWarningAtMillis ?? task.nextFireAtMillis, this.use24Hour())}`;
+      return s.starts(
+        formatDateTime(
+          task.firstWarningAtMillis ?? task.nextFireAtMillis,
+          this.use24Hour(),
+          undefined,
+          s,
+        ),
+      );
     }
-    return `next nag ${relativeFuture(task.nextFireAtMillis, this.nowMillis())} · every ${task.repeatIntervalMinutes} min`;
+    return s.nextNag(
+      relativeFuture(task.nextFireAtMillis, this.nowMillis(), s),
+      task.repeatIntervalMinutes,
+    );
   });
 
   private longPressHandle: ReturnType<typeof setTimeout> | null = null;

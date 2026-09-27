@@ -18,7 +18,7 @@ sealed interface NotificationSound {
     data class Custom(val uri: String, val label: String) : NotificationSound
 }
 
-data class BuiltInSound(val key: String, val label: String)
+data class BuiltInSound(val key: String)
 
 /**
  * Shipped with the app, from Google's Material sound resources (CC-BY 4.0; see
@@ -26,20 +26,13 @@ data class BuiltInSound(val key: String, val label: String)
  * the asset files are named after them on both platforms.
  */
 val BUILT_IN_SOUNDS = listOf(
-    BuiltInSound("simple-01", "Simple"),
-    BuiltInSound("simple-02", "Simple 2"),
-    BuiltInSound("decorative-01", "Decorative"),
-    BuiltInSound("decorative-02", "Decorative 2"),
-    BuiltInSound("ambient", "Ambient"),
-    BuiltInSound("high-intensity", "Urgent"),
+    BuiltInSound("simple-01"),
+    BuiltInSound("simple-02"),
+    BuiltInSound("decorative-01"),
+    BuiltInSound("decorative-02"),
+    BuiltInSound("ambient"),
+    BuiltInSound("high-intensity"),
 )
-
-fun NotificationSound.label(): String = when (this) {
-    NotificationSound.Silent -> "Silent"
-    NotificationSound.SystemDefault -> "System default"
-    is NotificationSound.BuiltIn -> BUILT_IN_SOUNDS.first { it.key == key }.label
-    is NotificationSound.Custom -> label
-}
 
 /**
  * The stored form: `silent`, `system`, `builtin:<key>` or `custom:<uri>|<label>`.
@@ -80,10 +73,10 @@ fun parseNotificationSound(stored: String?): NotificationSound = when {
  * Android plays alarms on the speaker even with headphones connected, while
  * media stays in the headphones.
  */
-enum class SoundStream(val storageKey: String, val label: String) {
-    Notification("notification", "Notification"),
-    Alarm("alarm", "Alarm"),
-    Media("media", "Media"),
+enum class SoundStream(val storageKey: String) {
+    Notification("notification"),
+    Alarm("alarm"),
+    Media("media"),
 }
 
 /**

@@ -4,6 +4,8 @@ import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import {
   buildDailyOverview,
   DailyOverviewItem,
@@ -33,16 +35,16 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
   template: `
     <mat-toolbar>
       @if (back()) {
-        <button matIconButton aria-label="Back" (click)="back()!()">
+        <button matIconButton [attr.aria-label]="s().back" (click)="back()!()">
           <mat-icon>arrow_back</mat-icon>
         </button>
       }
       <span>{{ title() }}</span>
       <span class="spacer"></span>
-      <button matIconButton [attr.aria-label]="'Share ' + title()" (click)="share()">
+      <button matIconButton [attr.aria-label]="s().share(title())" (click)="share()">
         <mat-icon>share</mat-icon>
       </button>
-      <button matIconButton [attr.aria-label]="'Copy ' + title()" (click)="copy()">
+      <button matIconButton [attr.aria-label]="s().copy(title())" (click)="copy()">
         <mat-icon>content_copy</mat-icon>
       </button>
     </mat-toolbar>
@@ -55,12 +57,12 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
             [selected]="includeConcluded()"
             (selectionChange)="includeConcluded.set($any($event).selected)"
           >
-            Show completed
+            {{ s().showCompleted }}
           </mat-chip-option>
         </mat-chip-listbox>
 
         @if (empty()) {
-          <p class="empty">Nothing on this day.</p>
+          <p class="empty">{{ s().nothingOnThisDay }}</p>
         } @else {
           @for (section of overview().sections; track section.kind) {
             <h2 class="section">{{ label(section.kind) }}</h2>
@@ -78,7 +80,7 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
                   <span class="when">{{ timeLabel(item, section.kind) }}</span>
                 </div>
                 @if (item.recurring) {
-                  <mat-icon class="repeat" aria-label="Repeats">repeat</mat-icon>
+                  <mat-icon class="repeat" [attr.aria-label]="s().repeats">repeat</mat-icon>
                 }
               </div>
             }
@@ -154,12 +156,13 @@ export class OverviewView {
   readonly includeConcluded = model(false);
 
   protected readonly state = inject(AppState);
+  protected readonly s = inject(I18n).strings;
   private readonly reportShare = inject(ReportShare);
   private readonly use24Hour = prefers24Hour();
 
   protected readonly title = computed(() => {
     const date = this.date();
-    return date === null ? 'Today' : formatDayTitle(date);
+    return date === null ? this.s().reportToday : formatDayTitle(date, this.s());
   });
 
   protected readonly overview = computed(() =>
@@ -175,7 +178,9 @@ export class OverviewView {
 
   protected readonly empty = computed(() => isOverviewEmpty(this.overview()));
 
-  protected label = sectionLabel;
+  protected label(kind: OverviewSectionKind): string {
+    return sectionLabel(kind, this.s());
+  }
 
   protected nagging(kind: OverviewSectionKind): boolean {
     return kind !== 'later' && kind !== 'scheduled';
@@ -187,18 +192,18 @@ export class OverviewView {
   }
 
   protected timeLabel(item: DailyOverviewItem, kind: OverviewSectionKind): string {
-    return overviewTimeLabel(item, kind, this.use24Hour);
+    return overviewTimeLabel(item, kind, this.use24Hour, this.s());
   }
 
   protected share(): Promise<void> {
     return this.reportShare.share(
-      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'markdown'),
+      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'markdown', this.s()),
     );
   }
 
   protected copy(): Promise<void> {
     return this.reportShare.copy(
-      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'plain'),
+      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'plain', this.s()),
     );
   }
 }

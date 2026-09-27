@@ -22,6 +22,8 @@ import { NgTemplateOutlet } from '@angular/common';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { prefers24Hour } from '../../core/domain/format';
 import { OpenTask } from '../../core/domain/models';
 import { plusDays, startOfDay } from '../../core/domain/time';
@@ -57,10 +59,10 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <mat-toolbar>
-      <span class="title">RelentlessBadger</span>
+      <span class="title">{{ s().appName }}</span>
       <button
         matIconButton
-        aria-label="Sync"
+        [attr.aria-label]="s().sync"
         [disabled]="state.syncing()"
         (click)="state.refresh(true)"
       >
@@ -70,7 +72,11 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
           <mat-icon>refresh</mat-icon>
         }
       </button>
-      <button matIconButton aria-label="Settings" (click)="router.navigate(['/settings'])">
+      <button
+        matIconButton
+        [attr.aria-label]="s().settings"
+        (click)="router.navigate(['/settings'])"
+      >
         <mat-icon>settings</mat-icon>
       </button>
     </mat-toolbar>
@@ -85,13 +91,13 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
               <p>
                 {{
                   state.notificationPermission() === 'denied'
-                    ? 'Notifications are blocked, so this badger can only nag you while the app is open.'
-                    : 'Allow notifications and install the app to get nagged even when this tab is in the background.'
+                    ? s().notificationsBlocked
+                    : s().allowNotificationsHint
                 }}
               </p>
               @if (state.notificationPermission() === 'default') {
                 <button matButton (click)="state.requestNotificationPermission()">
-                  Allow notifications
+                  {{ s().allowNotifications }}
                 </button>
               }
             </mat-card-content>
@@ -100,8 +106,8 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
 
         @if (state.openTasks().length === 0) {
           <div class="empty">
-            <p class="headline">Nothing pending 🎉</p>
-            <p>Add something above and the badger starts crowing.</p>
+            <p class="headline">{{ s().nothingPending }}</p>
+            <p>{{ s().nothingPendingHint }}</p>
           </div>
         } @else {
           <div class="task-list">
@@ -126,13 +132,13 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
             <ng-container
               *ngTemplateOutlet="
                 scheduledSection;
-                context: { label: 'Scheduled (Today)', tasks: scheduledToday() }
+                context: { label: s().scheduledToday, tasks: scheduledToday() }
               "
             />
             <ng-container
               *ngTemplateOutlet="
                 scheduledSection;
-                context: { label: 'Scheduled (Later)', tasks: scheduledLater() }
+                context: { label: s().scheduledLater, tasks: scheduledLater() }
               "
             />
           </div>
@@ -207,6 +213,7 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
 })
 export class TasksPage {
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   readonly router = inject(Router);
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
@@ -256,7 +263,7 @@ export class TasksPage {
       if (!dismissed) return;
       this.state.dismissedSuggestion.set(null);
       this.snackBar
-        .open(`Removed "${dismissed}" from suggestions`, 'Undo', { duration: 6000 })
+        .open(this.s().removedFromSuggestions(dismissed), this.s().undo, { duration: 6000 })
         .onAction()
         .subscribe(() => void this.state.undoDismissSuggestion(dismissed));
     });
@@ -265,9 +272,12 @@ export class TasksPage {
       const concluded = this.state.concludedTask();
       if (!concluded) return;
       this.state.concludedTask.set(null);
-      const verb = concluded.cancelled ? 'Cancelled' : 'Done';
+      const s = this.s();
+      const message = concluded.cancelled
+        ? s.concludedCancelled(concluded.task.title)
+        : s.concludedDone(concluded.task.title);
       this.snackBar
-        .open(`${verb} "${concluded.task.title}"`, 'Undo', { duration: 6000 })
+        .open(message, s.undo, { duration: 6000 })
         .onAction()
         .subscribe(() => void this.state.undoConclusion(concluded));
     });

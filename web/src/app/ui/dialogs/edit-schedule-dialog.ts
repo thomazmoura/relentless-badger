@@ -13,6 +13,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { formatDateTime, prefers24Hour, recurrenceLabel } from '../../core/domain/format';
 import { OpenTask, Recurrence, taskRecurrence } from '../../core/domain/models';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { DateTimePickerDialog } from './date-time-picker-dialog';
 import { RecurrencePickerDialog } from './recurrence-picker-dialog';
 
@@ -43,20 +45,28 @@ export interface EditScheduleResult {
           <mat-icon matChipAvatar>schedule</mat-icon>
           {{
             startMillis() === null
-              ? 'Set start time'
-              : 'Starts ' + formatDateTime(startMillis()!, use24Hour)
+              ? s().setStartTime
+              : s().startsCapitalised(formatDateTime(startMillis()!, use24Hour, undefined, s()))
           }}
           @if (startMillis() !== null) {
-            <button matChipRemove aria-label="Clear start time" (click)="clearStart($event)">
+            <button
+              matChipRemove
+              [attr.aria-label]="s().clearStartTime"
+              (click)="clearStart($event)"
+            >
               <mat-icon>cancel</mat-icon>
             </button>
           }
         </mat-chip>
         <mat-chip (click)="pickRecurrence()">
           <mat-icon matChipAvatar>repeat</mat-icon>
-          {{ recurrence() === null ? 'Does not repeat' : recurrenceLabel(recurrence()!) }}
+          {{ recurrence() === null ? s().doesNotRepeat : recurrenceLabel(recurrence()!, s()) }}
           @if (recurrence() !== null) {
-            <button matChipRemove aria-label="Clear recurrence" (click)="clearRecurrence($event)">
+            <button
+              matChipRemove
+              [attr.aria-label]="s().clearRecurrence"
+              (click)="clearRecurrence($event)"
+            >
               <mat-icon>cancel</mat-icon>
             </button>
           }
@@ -64,7 +74,7 @@ export interface EditScheduleResult {
       </mat-chip-set>
 
       <mat-form-field appearance="outline" class="interval">
-        <mat-label>Nag every N minutes</mat-label>
+        <mat-label>{{ s().nagEveryNMinutes }}</mat-label>
         <input
           matInput
           type="number"
@@ -73,17 +83,17 @@ export interface EditScheduleResult {
           (ngModelChange)="intervalText.set($event)"
         />
         @if (!intervalValid()) {
-          <mat-error>At least 1 minute.</mat-error>
+          <mat-error>{{ s().atLeastOneMinute }}</mat-error>
         }
       </mat-form-field>
 
       @if (recurrence() !== null && startMillis() === null) {
-        <p class="error">A repeating task needs a start time.</p>
+        <p class="error">{{ s().repeatingNeedsStart }}</p>
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button matButton mat-dialog-close>Cancel</button>
-      <button matButton="filled" [disabled]="!canSave()" (click)="save()">Save</button>
+      <button matButton mat-dialog-close>{{ s().cancel }}</button>
+      <button matButton="filled" [disabled]="!canSave()" (click)="save()">{{ s().save }}</button>
     </mat-dialog-actions>
   `,
   styles: `
@@ -110,6 +120,7 @@ export interface EditScheduleResult {
   `,
 })
 export class EditScheduleDialog {
+  readonly s = inject(I18n).strings;
   readonly task = inject<OpenTask>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<EditScheduleDialog, EditScheduleResult>);
   private readonly dialog = inject(MatDialog);
@@ -134,7 +145,7 @@ export class EditScheduleDialog {
   async pickStart(): Promise<void> {
     const picked = await this.dialog
       .open(DateTimePickerDialog, {
-        data: { title: 'Start time', initialMillis: this.startMillis() },
+        data: { title: this.s().startTime, initialMillis: this.startMillis() },
       })
       .afterClosed()
       .toPromise();

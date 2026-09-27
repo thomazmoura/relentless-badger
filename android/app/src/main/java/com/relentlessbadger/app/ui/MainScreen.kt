@@ -116,6 +116,7 @@ fun MainScreen(
     val session by viewModel.session.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val s = LocalStrings.current
     val use24Hour = DateFormat.is24HourFormat(context)
     val waitMinutes = session?.waitMinutes ?: DEFAULT_WAIT_MINUTES
     // Ticks so the "next nag" countdowns stay current, scheduled tasks move into
@@ -150,8 +151,8 @@ fun MainScreen(
     LaunchedEffect(viewModel.dismissedSuggestion) {
         viewModel.dismissedSuggestion?.let { title ->
             val result = snackbarHostState.showSnackbar(
-                message = "Removed \"$title\" from suggestions",
-                actionLabel = "Undo",
+                message = s.removedFromSuggestions(title),
+                actionLabel = s.undo,
             )
             if (result == SnackbarResult.ActionPerformed) {
                 viewModel.undoDismissSuggestion(title)
@@ -162,10 +163,13 @@ fun MainScreen(
 
     LaunchedEffect(viewModel.concludedTask) {
         viewModel.concludedTask?.let { concluded ->
-            val verb = if (concluded.cancelled) "Cancelled" else "Done"
             val result = snackbarHostState.showSnackbar(
-                message = "$verb \"${concluded.task.title}\"",
-                actionLabel = "Undo",
+                message = if (concluded.cancelled) {
+                    s.concludedCancelled(concluded.task.title)
+                } else {
+                    s.concludedDone(concluded.task.title)
+                },
+                actionLabel = s.undo,
                 duration = SnackbarDuration.Long,
             )
             if (result == SnackbarResult.ActionPerformed) {
@@ -178,7 +182,7 @@ fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Relentless Badger") },
+                title = { Text(s.appName) },
                 actions = {
                     PauseMenuButton(
                         pauseUntilMillis = pauseUntilMillis,
@@ -188,10 +192,10 @@ fun MainScreen(
                         onResume = { viewModel.resumeNotifications() },
                     )
                     IconButton(onClick = { viewModel.refresh(interactive = true) }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Sync")
+                        Icon(Icons.Filled.Refresh, contentDescription = s.sync)
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Filled.Settings, contentDescription = "Settings")
+                        Icon(Icons.Filled.Settings, contentDescription = s.settings)
                     }
                 },
             )
@@ -211,13 +215,13 @@ fun MainScreen(
                 Card(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     Column(Modifier.padding(12.dp)) {
                         Text(
-                            "Exact alarms are disabled, so reminders may arrive late.",
+                            s.exactAlarmsDisabled,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         TextButton(onClick = {
                             context.startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM))
                         }) {
-                            Text("Allow exact alarms")
+                            Text(s.allowExactAlarms)
                         }
                     }
                 }
@@ -232,12 +236,12 @@ fun MainScreen(
                         modifier = Modifier.padding(start = 12.dp),
                     ) {
                         Text(
-                            "Reminders paused until ${formatDateTime(until, use24Hour)}",
+                            s.remindersPausedUntil(formatDateTime(until, use24Hour, s)),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f),
                         )
                         TextButton(onClick = { viewModel.resumeNotifications() }) {
-                            Text("Resume")
+                            Text(s.resume)
                         }
                     }
                 }
@@ -315,9 +319,9 @@ fun MainScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     Spacer(Modifier.height(64.dp))
-                    Text("Nothing pending 🎉", style = MaterialTheme.typography.titleMedium)
+                    Text(s.nothingPending, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Add something above and the badger starts crowing.",
+                        s.nothingPendingHint,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -336,7 +340,7 @@ fun MainScreen(
                         tapsLocked = tapsLocked,
                     )
                     if (scheduledToday.isNotEmpty()) {
-                        item(key = SCHEDULED_TODAY_HEADER_KEY) { TaskSectionHeader("Scheduled (Today)") }
+                        item(key = SCHEDULED_TODAY_HEADER_KEY) { TaskSectionHeader(s.scheduledToday) }
                         taskRows(
                             tasks = scheduledToday,
                             scheduled = true,
@@ -351,7 +355,7 @@ fun MainScreen(
                         )
                     }
                     if (scheduledLater.isNotEmpty()) {
-                        item(key = SCHEDULED_LATER_HEADER_KEY) { TaskSectionHeader("Scheduled (Later)") }
+                        item(key = SCHEDULED_LATER_HEADER_KEY) { TaskSectionHeader(s.scheduledLater) }
                         taskRows(
                             tasks = scheduledLater,
                             scheduled = true,
@@ -452,25 +456,26 @@ private fun PauseMenuButton(
     onPickDateTime: () -> Unit,
     onResume: () -> Unit,
 ) {
+    val s = LocalStrings.current
     var menuExpanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { menuExpanded = true }) {
             Icon(
                 if (pauseUntilMillis != null) Icons.Filled.NotificationsOff else Icons.Filled.Notifications,
-                contentDescription = if (pauseUntilMillis != null) "Reminders paused" else "Pause reminders",
+                contentDescription = if (pauseUntilMillis != null) s.remindersPaused else s.pauseReminders,
             )
         }
         // Anchored to the button, like the row's snooze menu.
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
             if (pauseUntilMillis != null) {
                 Text(
-                    "Paused until ${formatDateTime(pauseUntilMillis, use24Hour)}",
+                    s.pausedUntil(formatDateTime(pauseUntilMillis, use24Hour, s)),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
                 DropdownMenuItem(
-                    text = { Text("Resume now") },
+                    text = { Text(s.resumeNow) },
                     leadingIcon = { Icon(Icons.Filled.Notifications, contentDescription = null) },
                     onClick = {
                         menuExpanded = false
@@ -481,7 +486,7 @@ private fun PauseMenuButton(
             }
             PAUSE_OPTIONS_MINUTES.forEach { minutes ->
                 DropdownMenuItem(
-                    text = { Text("Pause for ${formatDuration(minutes)}") },
+                    text = { Text(s.pauseFor(formatDuration(minutes, s))) },
                     leadingIcon = { Icon(Icons.Filled.NotificationsOff, contentDescription = null) },
                     onClick = {
                         menuExpanded = false
@@ -491,7 +496,7 @@ private fun PauseMenuButton(
             }
             HorizontalDivider()
             DropdownMenuItem(
-                text = { Text("Pause until a date & time…") },
+                text = { Text(s.pauseUntilDateTime) },
                 leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                 onClick = {
                     menuExpanded = false
@@ -504,6 +509,7 @@ private fun PauseMenuButton(
 
 @Composable
 private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
+    val s = LocalStrings.current
     var showDateTimePicker by remember { mutableStateOf(false) }
     var showRecurrencePicker by remember { mutableStateOf(false) }
     // A repeating task needs a start time; route through the picker first.
@@ -524,13 +530,13 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
         OutlinedTextField(
             value = viewModel.quickAddText,
             onValueChange = { viewModel.quickAddText = it },
-            placeholder = { Text("What needs doing right away?") },
+            placeholder = { Text(s.quickAddPlaceholder) },
             singleLine = true,
             leadingIcon = {
                 IconButton(onClick = { showDateTimePicker = true }) {
                     Icon(
                         Icons.Filled.Schedule,
-                        contentDescription = "Set first reminder time",
+                        contentDescription = s.setFirstReminderTime,
                         tint = if (firstWarning != null) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -544,7 +550,7 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
                     IconButton(onClick = { showRecurrencePicker = true }) {
                         Icon(
                             Icons.Filled.Repeat,
-                            contentDescription = "Set recurrence",
+                            contentDescription = s.setRecurrence,
                             tint = if (recurrence != null) {
                                 MaterialTheme.colorScheme.primary
                             } else {
@@ -556,7 +562,7 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
                         onClick = { addOrPickTime(viewModel.quickAddText) },
                         enabled = viewModel.quickAddText.isNotBlank() && !viewModel.busy,
                     ) {
-                        Icon(Icons.Filled.Add, contentDescription = "Add task")
+                        Icon(Icons.Filled.Add, contentDescription = s.addTask)
                     }
                 }
             },
@@ -569,12 +575,12 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
             if (firstWarning != null) {
                 AssistChip(
                     onClick = { showDateTimePicker = true },
-                    label = { Text("First nag ${formatDateTime(firstWarning, use24Hour)}") },
+                    label = { Text(s.firstNag(formatDateTime(firstWarning, use24Hour, s))) },
                     leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                     trailingIcon = {
                         Icon(
                             Icons.Filled.Close,
-                            contentDescription = "Clear first reminder time",
+                            contentDescription = s.clearFirstReminderTime,
                             modifier = Modifier.clickable { viewModel.quickAddFirstWarningAtMillis = null },
                         )
                     },
@@ -584,12 +590,12 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
             if (recurrence != null) {
                 AssistChip(
                     onClick = { showRecurrencePicker = true },
-                    label = { Text(recurrenceLabel(recurrence)) },
+                    label = { Text(recurrenceLabel(recurrence, s)) },
                     leadingIcon = { Icon(Icons.Filled.Repeat, contentDescription = null) },
                     trailingIcon = {
                         Icon(
                             Icons.Filled.Close,
-                            contentDescription = "Clear recurrence",
+                            contentDescription = s.clearRecurrence,
                             modifier = Modifier.clickable { viewModel.quickAddRecurrence = null },
                         )
                     },
@@ -626,7 +632,7 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
                             IconButton(onClick = { viewModel.dismissSuggestion(suggestion) }) {
                                 Icon(
                                     Icons.Filled.Close,
-                                    contentDescription = "Remove \"$suggestion\" from suggestions",
+                                    contentDescription = s.removeSuggestion(suggestion),
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
@@ -680,6 +686,7 @@ private fun WaitOptionsDialog(
     onSnooze: (Int) -> Unit,
     onPickDateTime: () -> Unit,
 ) {
+    val s = LocalStrings.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -693,21 +700,21 @@ private fun WaitOptionsDialog(
             Column {
                 waitMinutes.forEach { minutes ->
                     ListItem(
-                        headlineContent = { Text("Wait ${formatDuration(minutes)}") },
+                        headlineContent = { Text(s.waitFor(formatDuration(minutes, s))) },
                         leadingContent = { Icon(Icons.Filled.Snooze, contentDescription = null) },
                         modifier = Modifier.clickable { onSnooze(minutes) },
                     )
                 }
                 HorizontalDivider()
                 ListItem(
-                    headlineContent = { Text("Pick a date & time…") },
+                    headlineContent = { Text(s.pickDateTime) },
                     leadingContent = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                     modifier = Modifier.clickable(onClick = onPickDateTime),
                 )
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
     )
 }
@@ -730,6 +737,7 @@ private fun DateTimePickerFlow(
     minMillis: Long? = null,
     maxMillis: Long? = null,
 ) {
+    val s = LocalStrings.current
     var pickedDateMillis by remember { mutableStateOf<Long?>(null) }
 
     if (pickedDateMillis == null) {
@@ -761,10 +769,10 @@ private fun DateTimePickerFlow(
                 TextButton(
                     enabled = dateState.selectedDateMillis != null,
                     onClick = { pickedDateMillis = dateState.selectedDateMillis },
-                ) { Text("Next") }
+                ) { Text(s.next) }
             },
             dismissButton = {
-                TextButton(onClick = onDismiss) { Text("Cancel") }
+                TextButton(onClick = onDismiss) { Text(s.cancel) }
             },
         ) {
             DatePicker(state = dateState)
@@ -853,20 +861,25 @@ private fun utcStartOfLocalDay(epochMillis: Long): Long =
 private fun localYearOf(epochMillis: Long): Int =
     Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).year
 
-private val dateTimeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, h:mm a")
-private val dateTimeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, HH:mm")
+private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
+private val timeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
-internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean): String =
-    Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
-        .format(if (use24Hour) dateTimeFormatter24 else dateTimeFormatter12)
-
-private val dayTitleFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEEE, MMM d")
+/**
+ * "Jul 17, 3:05 PM" or "17 de jul, 15:05". Month names come from [Strings]
+ * rather than the locale's own, so the web client, which spells them the same
+ * way, reads identically.
+ */
+internal fun formatDateTime(epochMillis: Long, use24Hour: Boolean, strings: Strings = Strings.English): String {
+    val at = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
+    val time = at.format(if (use24Hour) timeFormatter24 else timeFormatter12)
+    return "${strings.dayAndMonth(at.dayOfMonth, at.monthValue)}, $time"
+}
 
 /** "Friday, Sep 18" — how a day names itself once it isn't today. */
-internal fun formatDayTitle(date: java.time.LocalDate): String = date.format(dayTitleFormatter)
-
-private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
-private val timeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+internal fun formatDayTitle(date: java.time.LocalDate, strings: Strings = Strings.English): String {
+    val weekday = date.dayOfWeek.getDisplayName(TextStyle.FULL, strings.locale)
+    return "$weekday, ${strings.dayAndMonth(date.dayOfMonth, date.monthValue)}"
+}
 
 /** "3:05 PM" or "15:05" — the same instant as [formatDateTime], without the date. */
 internal fun formatTimeOfDay(
@@ -906,6 +919,7 @@ private fun TaskRow(
         label = "rowButtonAlpha",
     )
     val buttonFade = Modifier.graphicsLayer { alpha = buttonAlpha }
+    val s = LocalStrings.current
     // Everything on the row's face is gated by [canAct], asked at the moment of
     // the tap: just after a reorder, the task under the finger may not be the
     // one the user aimed at. The menus aren't — they already belong to a task.
@@ -924,7 +938,7 @@ private fun TaskRow(
                 overflow = TextOverflow.Ellipsis,
             )
             val schedule = if (scheduled) {
-                "starts ${formatDateTime(task.firstWarningAtMillis ?: task.nextFireAtMillis, use24Hour)}"
+                s.starts(formatDateTime(task.firstWarningAtMillis ?: task.nextFireAtMillis, use24Hour, s))
             } else {
                 // The effective time, not the intended one: while paused or
                 // inside the quiet hours the task still holds the fire time it
@@ -933,7 +947,7 @@ private fun TaskRow(
                     deferPastPause(task.nextFireAtMillis, pauseUntilMillis),
                     quietHours,
                 )
-                "next nag ${relativeFuture(nextNag, nowMillis)} · every ${task.repeatIntervalMinutes} min"
+                s.nextNag(relativeFuture(nextNag, nowMillis, s), task.repeatIntervalMinutes)
             }
             Text(
                 schedule,
@@ -942,7 +956,7 @@ private fun TaskRow(
             )
             task.recurrence()?.let { recurrence ->
                 Text(
-                    recurrenceLabel(recurrence),
+                    recurrenceLabel(recurrence, s),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -954,14 +968,14 @@ private fun TaskRow(
             var menuExpanded by remember { mutableStateOf(false) }
             Box {
                 IconButton(onClick = { if (canAct()) menuExpanded = true }, modifier = buttonFade) {
-                    Icon(Icons.Filled.Snooze, contentDescription = "Snooze")
+                    Icon(Icons.Filled.Snooze, contentDescription = s.snooze)
                 }
                 // Anchored to the button so the options appear where the user is
                 // already looking.
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     waitMinutes.forEach { minutes ->
                         DropdownMenuItem(
-                            text = { Text("Wait ${formatDuration(minutes)}") },
+                            text = { Text(s.waitFor(formatDuration(minutes, s))) },
                             leadingIcon = { Icon(Icons.Filled.Snooze, contentDescription = null) },
                             onClick = {
                                 menuExpanded = false
@@ -971,7 +985,7 @@ private fun TaskRow(
                     }
                     HorizontalDivider()
                     DropdownMenuItem(
-                        text = { Text("Pick a date & time…") },
+                        text = { Text(s.pickDateTime) },
                         leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                         onClick = {
                             menuExpanded = false
@@ -984,7 +998,7 @@ private fun TaskRow(
             // The snooze slot, mirrored: a scheduled task can't be pushed later
             // from here, but it can be pulled to now.
             IconButton(onClick = { if (canAct()) onAdvance() }, modifier = buttonFade) {
-                Icon(Icons.Filled.PlayArrow, contentDescription = "Start nagging now")
+                Icon(Icons.Filled.PlayArrow, contentDescription = s.startNaggingNow)
             }
         }
 
@@ -1014,6 +1028,7 @@ private fun DoneButton(
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     var menuOpen by remember { mutableStateOf(false) }
 
     Box {
@@ -1024,8 +1039,8 @@ private fun DoneButton(
                 .background(MaterialTheme.colorScheme.secondaryContainer)
                 .combinedClickable(
                     role = Role.Button,
-                    onClickLabel = "Mark done",
-                    onLongClickLabel = "Other ways to close this task",
+                    onClickLabel = s.markDone,
+                    onLongClickLabel = s.otherWaysToClose,
                     onClick = { if (canAct()) onDone() },
                     onLongClick = { if (canAct()) menuOpen = true },
                 ),
@@ -1033,13 +1048,13 @@ private fun DoneButton(
         ) {
             Icon(
                 Icons.Filled.Check,
-                contentDescription = "Mark done",
+                contentDescription = s.markDone,
                 tint = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
         DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
             DropdownMenuItem(
-                text = { Text("Done previously") },
+                text = { Text(s.donePreviously) },
                 leadingIcon = { Icon(Icons.Filled.History, contentDescription = null) },
                 onClick = {
                     menuOpen = false
@@ -1047,7 +1062,7 @@ private fun DoneButton(
                 },
             )
             DropdownMenuItem(
-                text = { Text("Cancel task") },
+                text = { Text(s.cancelTask) },
                 leadingIcon = { Icon(Icons.Filled.Close, contentDescription = null) },
                 onClick = {
                     menuOpen = false
@@ -1065,6 +1080,7 @@ private fun RecurrencePickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Recurrence?) -> Unit,
 ) {
+    val s = LocalStrings.current
     var unit by remember { mutableStateOf(initial?.unit) }
     var everyNText by remember { mutableStateOf((initial?.everyN ?: 1).toString()) }
     var daysOfWeek by remember {
@@ -1076,7 +1092,7 @@ private fun RecurrencePickerDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Repeat") },
+        title = { Text(s.repeatTitle) },
         confirmButton = {
             TextButton(
                 enabled = valid,
@@ -1085,10 +1101,10 @@ private fun RecurrencePickerDialog(
                         unit?.let { Recurrence(everyN!!, it, if (it == RecurUnit.WEEKS) daysOfWeek else 0) },
                     )
                 },
-            ) { Text("Set") }
+            ) { Text(s.setAction) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
         text = {
             Column {
@@ -1096,13 +1112,13 @@ private fun RecurrencePickerDialog(
                     FilterChip(
                         selected = unit == null,
                         onClick = { unit = null },
-                        label = { Text("None") },
+                        label = { Text(s.repeatNone) },
                         modifier = Modifier.padding(end = 8.dp),
                     )
                     FilterChip(
                         selected = unit == RecurUnit.DAYS,
                         onClick = { unit = RecurUnit.DAYS },
-                        label = { Text("Daily") },
+                        label = { Text(s.repeatDaily) },
                         modifier = Modifier.padding(end = 8.dp),
                     )
                     FilterChip(
@@ -1111,14 +1127,14 @@ private fun RecurrencePickerDialog(
                             unit = RecurUnit.WEEKS
                             if (daysOfWeek == 0) daysOfWeek = defaultWeekdayBit()
                         },
-                        label = { Text("Weekly") },
+                        label = { Text(s.repeatWeekly) },
                     )
                 }
                 if (unit != null) {
                     OutlinedTextField(
                         value = everyNText,
                         onValueChange = { everyNText = it },
-                        label = { Text(if (unit == RecurUnit.DAYS) "Every N days" else "Every N weeks") },
+                        label = { Text(if (unit == RecurUnit.DAYS) s.everyNDaysField else s.everyNWeeksField) },
                         singleLine = true,
                         isError = everyN == null || everyN < 1,
                         modifier = Modifier.padding(top = 12.dp),
@@ -1131,7 +1147,7 @@ private fun RecurrencePickerDialog(
                             FilterChip(
                                 selected = daysOfWeek and bit != 0,
                                 onClick = { daysOfWeek = daysOfWeek xor bit },
-                                label = { Text(day.getDisplayName(TextStyle.SHORT, Locale.getDefault())) },
+                                label = { Text(day.getDisplayName(TextStyle.SHORT, s.locale)) },
                                 modifier = Modifier.padding(end = 6.dp),
                             )
                         }
@@ -1149,6 +1165,7 @@ private fun EditScheduleDialog(
     onDismiss: () -> Unit,
     onSave: (firstWarningAtMillis: Long?, repeatIntervalMinutes: Int, recurrence: Recurrence?) -> Unit,
 ) {
+    val s = LocalStrings.current
     var startMillis by remember { mutableStateOf(task.firstWarningAtMillis) }
     var recurrence by remember { mutableStateOf(task.recurrence()) }
     var intervalText by remember { mutableStateOf(task.repeatIntervalMinutes.toString()) }
@@ -1164,24 +1181,24 @@ private fun EditScheduleDialog(
             TextButton(
                 enabled = valid,
                 onClick = { onSave(startMillis, interval!!, recurrence) },
-            ) { Text("Save") }
+            ) { Text(s.save) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
         text = {
             Column {
                 AssistChip(
                     onClick = { showDateTimePicker = true },
                     label = {
-                        Text(startMillis?.let { "Starts ${formatDateTime(it, use24Hour)}" } ?: "Set start time")
+                        Text(startMillis?.let { s.startsCapitalised(formatDateTime(it, use24Hour, s)) } ?: s.setStartTime)
                     },
                     leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                     trailingIcon = {
                         if (startMillis != null) {
                             Icon(
                                 Icons.Filled.Close,
-                                contentDescription = "Clear start time",
+                                contentDescription = s.clearStartTime,
                                 modifier = Modifier.clickable {
                                     startMillis = null
                                     recurrence = null
@@ -1192,13 +1209,13 @@ private fun EditScheduleDialog(
                 )
                 AssistChip(
                     onClick = { showRecurrencePicker = true },
-                    label = { Text(recurrence?.let { recurrenceLabel(it) } ?: "Does not repeat") },
+                    label = { Text(recurrence?.let { recurrenceLabel(it, s) } ?: s.doesNotRepeat) },
                     leadingIcon = { Icon(Icons.Filled.Repeat, contentDescription = null) },
                     trailingIcon = {
                         if (recurrence != null) {
                             Icon(
                                 Icons.Filled.Close,
-                                contentDescription = "Clear recurrence",
+                                contentDescription = s.clearRecurrence,
                                 modifier = Modifier.clickable { recurrence = null },
                             )
                         }
@@ -1208,14 +1225,14 @@ private fun EditScheduleDialog(
                 OutlinedTextField(
                     value = intervalText,
                     onValueChange = { intervalText = it },
-                    label = { Text("Nag every N minutes") },
+                    label = { Text(s.nagEveryNMinutes) },
                     singleLine = true,
                     isError = interval == null || interval < 1,
                     modifier = Modifier.padding(top = 12.dp),
                 )
                 if (recurrence != null && startMillis == null) {
                     Text(
-                        "A repeating task needs a start time.",
+                        s.repeatingNeedsStart,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 8.dp),
@@ -1249,15 +1266,15 @@ private fun EditScheduleDialog(
 }
 
 /** "every day", "every 2 weeks · Mon, Wed, Fri" */
-internal fun recurrenceLabel(recurrence: Recurrence): String {
+internal fun recurrenceLabel(recurrence: Recurrence, strings: Strings = Strings.English): String {
     val cadence = when (recurrence.unit) {
-        RecurUnit.DAYS -> if (recurrence.everyN == 1) "every day" else "every ${recurrence.everyN} days"
-        RecurUnit.WEEKS -> if (recurrence.everyN == 1) "every week" else "every ${recurrence.everyN} weeks"
+        RecurUnit.DAYS -> if (recurrence.everyN == 1) strings.everyDay else strings.everyNDays(recurrence.everyN)
+        RecurUnit.WEEKS -> if (recurrence.everyN == 1) strings.everyWeek else strings.everyNWeeks(recurrence.everyN)
     }
     if (recurrence.unit != RecurUnit.WEEKS) return cadence
     val days = DayOfWeek.entries
         .filter { recurrence.daysOfWeek and (1 shl it.ordinal) != 0 }
-        .joinToString(", ") { it.getDisplayName(TextStyle.SHORT, Locale.getDefault()) }
+        .joinToString(", ") { it.getDisplayName(TextStyle.SHORT, strings.locale) }
     return "$cadence · $days"
 }
 
@@ -1265,20 +1282,16 @@ internal fun recurrenceLabel(recurrence: Recurrence): String {
 private fun defaultWeekdayBit(): Int =
     1 shl java.time.LocalDate.now().dayOfWeek.ordinal
 
-private fun relativeFuture(epochMillis: Long, nowMillis: Long): String {
+private fun relativeFuture(epochMillis: Long, nowMillis: Long, strings: Strings): String {
     val remaining = epochMillis - nowMillis
     val minutes = TimeUnit.MILLISECONDS.toMinutes(remaining)
     return when {
-        minutes < 1 -> "now"
-        minutes < 60 -> "in $minutes min"
-        minutes < 60 * 24 -> "in ${minutes / 60} h"
-        else -> "in ${minutes / (60 * 24)} d"
+        minutes < 1 -> strings.relativeNow
+        minutes < 60 -> strings.inMinutes(minutes)
+        minutes < 60 * 24 -> strings.inHours(minutes / 60)
+        else -> strings.inDays(minutes / (60 * 24))
     }
 }
 
 /** "45m", "4h", "1h 30m" — also used for the notification's Wait button. */
-internal fun formatDuration(minutes: Int): String = when {
-    minutes < 60 -> "${minutes}m"
-    minutes % 60 == 0 -> "${minutes / 60}h"
-    else -> "${minutes / 60}h ${minutes % 60}m"
-}
+internal fun formatDuration(minutes: Int, strings: Strings = Strings.English): String = strings.duration(minutes)

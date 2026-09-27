@@ -5,14 +5,16 @@ import { ActivatedRoute, Router } from '@angular/router';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+import { Strings } from '../../core/i18n/strings';
 import { CalendarPage } from '../calendar/calendar-page';
 import { TasksPage } from '../tasks/tasks-page';
 import { ReportsPage } from '../reports/reports-page';
 
 const TABS = [
-  { key: 'tasks', label: 'Tasks', icon: 'checklist' },
-  { key: 'calendar', label: 'Calendar', icon: 'calendar_month' },
-  { key: 'reports', label: 'Reports', icon: 'assessment' },
+  { key: 'tasks', label: (s: Strings) => s.tabTasks, icon: 'checklist' },
+  { key: 'calendar', label: (s: Strings) => s.tabCalendar, icon: 'calendar_month' },
+  { key: 'reports', label: (s: Strings) => s.tabReports, icon: 'assessment' },
 ] as const;
 
 /** Marks a history entry pushed on top of Tasks, so going home can pop it. */
@@ -51,7 +53,7 @@ const SWIPE_THRESHOLD_PX = 60;
     </div>
 
     <nav class="bottom">
-      @for (entry of tabs; track entry.label; let i = $index) {
+      @for (entry of tabs; track entry.key; let i = $index) {
         <button
           type="button"
           class="tab"
@@ -60,7 +62,7 @@ const SWIPE_THRESHOLD_PX = 60;
           (click)="select(i)"
         >
           <mat-icon>{{ entry.icon }}</mat-icon>
-          <span>{{ entry.label }}</span>
+          <span>{{ entry.label(s()) }}</span>
         </button>
       }
     </nav>
@@ -114,6 +116,7 @@ export class ShellPage {
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   readonly tabs = TABS;
   private readonly queryParams = toSignal(inject(ActivatedRoute).queryParamMap, {
     requireSync: true,

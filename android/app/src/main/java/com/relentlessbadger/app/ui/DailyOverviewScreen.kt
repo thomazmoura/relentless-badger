@@ -81,6 +81,7 @@ fun DailyOverviewScreen(
     val tasks by viewModel.openTasks.collectAsState()
     val context = LocalContext.current
     val use24Hour = DateFormat.is24HourFormat(context)
+    val s = LocalStrings.current
     val snackbarHostState = remember { SnackbarHostState() }
     // Ticks so a task crossing its start time moves from "Later today" up into
     // "Now" on its own, without waiting for a data change.
@@ -95,7 +96,7 @@ fun DailyOverviewScreen(
     val overview = remember(tasks, completed, shownDate, nowMillis, includeConcluded) {
         buildDailyOverview(tasks, completed, shownDate, nowMillis, includeConcluded)
     }
-    val title = if (date == null) "Today" else formatDayTitle(date)
+    val title = if (date == null) s.reportToday else formatDayTitle(date, s)
 
     Scaffold(
         topBar = {
@@ -104,13 +105,13 @@ fun DailyOverviewScreen(
                 navigationIcon = {
                     if (onBack != null) {
                         IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.back)
                         }
                     }
                 },
                 actions = {
                     ReportActions(title, snackbarHostState) { style ->
-                        renderDailyOverview(overview, title, use24Hour, style)
+                        renderDailyOverview(overview, title, use24Hour, style, s)
                     }
                 },
             )
@@ -127,13 +128,13 @@ fun DailyOverviewScreen(
             FilterChip(
                 selected = includeConcluded,
                 onClick = { includeConcluded = !includeConcluded },
-                label = { Text("Show completed") },
+                label = { Text(s.showCompleted) },
                 modifier = Modifier.padding(top = 4.dp),
             )
 
             if (overview.isEmpty) {
                 Text(
-                    "Nothing on this day.",
+                    s.nothingOnThisDay,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 24.dp),
@@ -143,7 +144,7 @@ fun DailyOverviewScreen(
 
             LazyColumn(Modifier.fillMaxSize()) {
                 overview.sections.forEach { section ->
-                    item(key = "header:${section.kind}") { SectionHeader(sectionLabel(section.kind)) }
+                    item(key = "header:${section.kind}") { SectionHeader(sectionLabel(section.kind, s)) }
                     items(section.items, key = { "${section.kind}:${it.taskId}" }) { item ->
                         OverviewRow(item, section.kind, use24Hour)
                     }
@@ -153,13 +154,13 @@ fun DailyOverviewScreen(
     }
 }
 
-/** Compose labels are hardcoded English; these are the five a day can carry. */
-internal fun sectionLabel(kind: OverviewSectionKind): String = when (kind) {
-    OverviewSectionKind.NOW -> "Now"
-    OverviewSectionKind.LATER -> "Later today"
-    OverviewSectionKind.SCHEDULED -> "Scheduled"
-    OverviewSectionKind.OVERDUE -> "Overdue"
-    OverviewSectionKind.DONE -> "Done"
+/** The five sections a day can carry. */
+internal fun sectionLabel(kind: OverviewSectionKind, strings: Strings = Strings.English): String = when (kind) {
+    OverviewSectionKind.NOW -> strings.sectionNow
+    OverviewSectionKind.LATER -> strings.sectionLater
+    OverviewSectionKind.SCHEDULED -> strings.sectionScheduled
+    OverviewSectionKind.OVERDUE -> strings.sectionOverdue
+    OverviewSectionKind.DONE -> strings.sectionDone
 }
 
 @Composable
@@ -175,6 +176,7 @@ internal fun SectionHeader(label: String) {
 
 @Composable
 private fun OverviewRow(item: DailyOverviewItem, kind: OverviewSectionKind, use24Hour: Boolean) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -188,7 +190,7 @@ private fun OverviewRow(item: DailyOverviewItem, kind: OverviewSectionKind, use2
                 nagging -> Icons.Filled.NotificationsActive
                 else -> Icons.Filled.Schedule
             },
-            contentDescription = sectionLabel(kind),
+            contentDescription = sectionLabel(kind, s),
             tint = if (kind == OverviewSectionKind.LATER || kind == OverviewSectionKind.SCHEDULED) {
                 MaterialTheme.colorScheme.onSurfaceVariant
             } else {
@@ -205,7 +207,7 @@ private fun OverviewRow(item: DailyOverviewItem, kind: OverviewSectionKind, use2
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                overviewTimeLabel(item, kind, use24Hour),
+                overviewTimeLabel(item, kind, use24Hour, s),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -213,7 +215,7 @@ private fun OverviewRow(item: DailyOverviewItem, kind: OverviewSectionKind, use2
         if (item.recurring) {
             Icon(
                 Icons.Filled.Repeat,
-                contentDescription = "Repeats",
+                contentDescription = s.repeats,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp),
             )
@@ -236,22 +238,23 @@ internal fun renderDailyOverview(
     title: String,
     use24Hour: Boolean,
     style: OverviewTextStyle,
+    strings: Strings = Strings.English,
 ): String {
     val bold = if (style == OverviewTextStyle.MARKDOWN) "*" else ""
     val italic = if (style == OverviewTextStyle.MARKDOWN) "_" else ""
-    val lines = mutableListOf("${bold}RelentlessBadger — $title$bold")
+    val lines = mutableListOf("${bold}${strings.reportBrand} — $title$bold")
 
     if (overview.isEmpty) {
         lines += ""
-        lines += "Nothing on this day."
+        lines += strings.nothingOnThisDay
         return lines.joinToString("\n")
     }
 
     overview.sections.forEach { section ->
         lines += ""
-        lines += "$bold${sectionLabel(section.kind)}$bold"
+        lines += "$bold${sectionLabel(section.kind, strings)}$bold"
         section.items.forEach {
-            lines += "• ${it.title} $italic(${overviewTimeLabel(it, section.kind, use24Hour)})$italic"
+            lines += "• ${it.title} $italic(${overviewTimeLabel(it, section.kind, use24Hour, strings)})$italic"
         }
     }
     return lines.joinToString("\n")
@@ -268,16 +271,17 @@ internal fun overviewTimeLabel(
     item: DailyOverviewItem,
     kind: OverviewSectionKind,
     use24Hour: Boolean,
+    strings: Strings = Strings.English,
 ): String {
     val when_ = if (item.fromEarlierDay) {
-        formatDateTime(item.atMillis, use24Hour)
+        formatDateTime(item.atMillis, use24Hour, strings)
     } else {
         formatTimeOfDay(item.atMillis, use24Hour)
     }
     return when (kind) {
-        OverviewSectionKind.NOW -> "since $when_"
-        OverviewSectionKind.OVERDUE -> "was due $when_"
-        OverviewSectionKind.DONE -> "done $when_"
+        OverviewSectionKind.NOW -> strings.since(when_)
+        OverviewSectionKind.OVERDUE -> strings.wasDue(when_)
+        OverviewSectionKind.DONE -> strings.doneAt(when_)
         OverviewSectionKind.LATER, OverviewSectionKind.SCHEDULED -> when_
     }
 }
@@ -305,25 +309,26 @@ internal fun ReportActions(
     render: (OverviewTextStyle) -> String,
 ) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     val scope = rememberCoroutineScope()
-    IconButton(onClick = { shareOverview(context, title, render(OverviewTextStyle.MARKDOWN)) }) {
-        Icon(Icons.Filled.Share, contentDescription = "Share $title")
+    IconButton(onClick = { shareOverview(context, s.share(title), render(OverviewTextStyle.MARKDOWN)) }) {
+        Icon(Icons.Filled.Share, contentDescription = s.share(title))
     }
     IconButton(onClick = {
         if (copyOverview(context, title, render(OverviewTextStyle.PLAIN))) {
-            scope.launch { snackbarHostState.showSnackbar("Copied the list") }
+            scope.launch { snackbarHostState.showSnackbar(s.copiedList) }
         }
     }) {
-        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $title")
+        Icon(Icons.Filled.ContentCopy, contentDescription = s.copy(title))
     }
 }
 
-private fun shareOverview(context: Context, title: String, text: String) {
+private fun shareOverview(context: Context, chooserTitle: String, text: String) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
     }
-    context.startActivity(Intent.createChooser(intent, "Share $title"))
+    context.startActivity(Intent.createChooser(intent, chooserTitle))
 }
 
 /** True when the app should say so itself; Android 13+ confirms the copy for us. */

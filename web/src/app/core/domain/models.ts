@@ -112,6 +112,11 @@ export interface Session extends SettingsDto {
    * field, so this never reaches the server.
    */
   readonly notificationSound: string;
+  /**
+   * The language picked in Settings, as a LanguagePreference. Local to this
+   * browser, like the sound, and for the same reason never pushed.
+   */
+  readonly language: string;
 }
 
 export function isSignedIn(session: Session): boolean {

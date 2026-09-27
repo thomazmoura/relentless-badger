@@ -1,6 +1,8 @@
 import { signal } from '@angular/core';
 import { formatDuration } from '../domain/format';
+import { Language } from '../domain/language';
 import { OpenTask } from '../domain/models';
+import { Strings, stringsOf } from '../i18n/strings';
 import { NotificationSound, notificationSoundSource } from '../domain/notification-sound';
 import { ReminderScheduler, TEST_NOTIFICATION_ID } from './reminder-scheduler';
 import { AudioElementSoundPlayer, SoundPlayer } from './sound-player';
@@ -27,8 +29,13 @@ const LEADER_STALE_MILLIS = 10_000;
 
 /** Where a reminder is actually shown. Faked in tests. */
 export interface NotificationPresenter {
-  show(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void;
-  showTest(defaultWaitMinutes: number, sound: NotificationSound): void;
+  show(
+    task: OpenTask,
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void;
+  showTest(defaultWaitMinutes: number, sound: NotificationSound, language: Language): void;
   dismiss(taskId: string): void;
 }
 
@@ -79,12 +86,21 @@ export class WebReminderScheduler implements ReminderScheduler {
     this.presenter.dismiss(taskId);
   }
 
-  showReminder(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void {
-    this.presenter.show(task, defaultWaitMinutes, sound);
+  showReminder(
+    task: OpenTask,
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void {
+    this.presenter.show(task, defaultWaitMinutes, sound, language);
   }
 
-  showTestNotification(defaultWaitMinutes: number, sound: NotificationSound): void {
-    this.presenter.showTest(defaultWaitMinutes, sound);
+  showTestNotification(
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void {
+    this.presenter.showTest(defaultWaitMinutes, sound, language);
   }
 
   async requestPermission(): Promise<NotificationPermission> {
@@ -172,8 +188,13 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
     private readonly player: SoundPlayer = new AudioElementSoundPlayer(),
   ) {}
 
-  show(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void {
-    this.post(task.id, task.title, defaultWaitMinutes, sound);
+  show(
+    task: OpenTask,
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void {
+    this.post(task.id, task.title, defaultWaitMinutes, sound, stringsOf(language));
   }
 
   /**
@@ -182,20 +203,27 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
    * nothing — App ignores actions carrying the test id, because there is no
    * task behind them to complete.
    */
-  showTest(defaultWaitMinutes: number, sound: NotificationSound): void {
+  showTest(defaultWaitMinutes: number, sound: NotificationSound, language: Language): void {
+    const strings = stringsOf(language);
     this.post(
       TEST_NOTIFICATION_ID,
-      'Test notification \u2014 reminders are working',
+      strings.testNotificationText,
       defaultWaitMinutes,
       sound,
+      strings,
     );
   }
 
+  /**
+   * One line, "Badger: water plants": on a watch or a crowded shade the title
+   * is often all that shows, so the task goes in it and there is no body.
+   */
   private post(
     taskId: string,
-    body: string,
+    title: string,
     defaultWaitMinutes: number,
     sound: NotificationSound,
+    strings: Strings,
   ): void {
     void this.registration().then(async (registration) => {
       if (
@@ -205,8 +233,7 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
       ) {
         return;
       }
-      void registration.showNotification('RelentlessBadger', {
-        body,
+      void registration.showNotification(strings.notificationTitle(title), {
         tag: taskId,
         requireInteraction: true,
         silent: !(await this.osShouldRing(sound)),
@@ -214,8 +241,8 @@ export class ServiceWorkerNotificationPresenter implements NotificationPresenter
         icon: 'icons/icon-192x192.png',
         badge: 'icons/icon-96x96.png',
         actions: [
-          { action: 'wait', title: `Wait ${formatDuration(defaultWaitMinutes)}` },
-          { action: 'done', title: 'Done' },
+          { action: 'wait', title: strings.waitFor(formatDuration(defaultWaitMinutes, strings)) },
+          { action: 'done', title: strings.notificationDone },
         ],
       } as NotificationOptions);
     });

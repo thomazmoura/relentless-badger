@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, DestroyRef, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { AppState } from './core/app-state';
+import { I18n } from './core/i18n/i18n.service';
 import { TEST_NOTIFICATION_ID } from './core/notify/reminder-scheduler';
 import {
   listenForNotificationActions,
@@ -18,6 +19,9 @@ export class App {
   private readonly state = inject(AppState);
 
   constructor() {
+    // Created up front so the page title and date locale are right from the start.
+    inject(I18n);
+
     // Tapping a reminder's Done or Wait button lands here: the service worker
     // can't reach the database, so the page applies the action.
     const stopListening = listenForNotificationActions((action) => void this.apply(action));

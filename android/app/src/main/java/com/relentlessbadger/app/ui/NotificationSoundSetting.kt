@@ -41,7 +41,6 @@ import androidx.core.content.IntentCompat
 import com.relentlessbadger.app.data.BUILT_IN_SOUNDS
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
-import com.relentlessbadger.app.data.label
 import com.relentlessbadger.app.data.parseNotificationSound
 import com.relentlessbadger.app.data.toStorageString
 import com.relentlessbadger.app.notify.Notifications
@@ -65,6 +64,7 @@ fun NotificationSoundSetting(
     onStreamChosen: (SoundStream) -> Unit,
 ) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     var dialogOpen by rememberSaveable { mutableStateOf(false) }
     var streamMenuOpen by remember { mutableStateOf(false) }
 
@@ -73,14 +73,14 @@ fun NotificationSoundSetting(
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Notification sound",
+            s.notificationSound,
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
-        TextButton(onClick = { dialogOpen = true }) { Text(current.label()) }
+        TextButton(onClick = { dialogOpen = true }) { Text(soundLabel(current, s)) }
     }
     Text(
-        "Built-in sounds: Google Material, CC-BY 4.0",
+        s.builtInSoundsCredit,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -92,19 +92,19 @@ fun NotificationSoundSetting(
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
     ) {
         Text(
-            "Play as",
+            s.playAs,
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
         Box {
             TextButton(onClick = { streamMenuOpen = true }, enabled = canChooseStream) {
-                Text(stream.label)
+                Text(streamLabel(stream, s))
                 Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
             }
             DropdownMenu(expanded = streamMenuOpen, onDismissRequest = { streamMenuOpen = false }) {
                 SoundStream.entries.forEach { option ->
                     DropdownMenuItem(
-                        text = { Text(option.label) },
+                        text = { Text(streamLabel(option, s)) },
                         onClick = {
                             streamMenuOpen = false
                             onStreamChosen(option)
@@ -116,14 +116,9 @@ fun NotificationSoundSetting(
     }
     Text(
         when (stream) {
-            SoundStream.Notification ->
-                "Follows the notification volume, so vibrate or silent mode mutes it."
-            SoundStream.Alarm ->
-                "Follows the alarm volume and sounds even on vibrate or silent. " +
-                    "Plays on the speaker even with headphones connected."
-            SoundStream.Media ->
-                "Follows the media volume and sounds even on vibrate or silent. " +
-                    "Stays in the headphones when they're connected."
+            SoundStream.Notification -> s.streamNotificationHint
+            SoundStream.Alarm -> s.streamAlarmHint
+            SoundStream.Media -> s.streamMediaHint
         },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -151,6 +146,7 @@ private fun NotificationSoundDialog(
     onDismiss: () -> Unit,
     onChosen: (NotificationSound) -> Unit,
 ) {
+    val s = LocalStrings.current
     // Stored as its string form, which is what makes a sealed type saveable.
     var selectedStored by rememberSaveable { mutableStateOf(current.toStorageString()) }
     val selected = parseNotificationSound(selectedStored)
@@ -164,7 +160,7 @@ private fun NotificationSoundDialog(
         val uri = result.data?.let {
             IntentCompat.getParcelableExtra(it, RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
         } ?: return@rememberLauncherForActivityResult
-        val title = RingtoneManager.getRingtone(context, uri)?.getTitle(context) ?: "Custom sound"
+        val title = RingtoneManager.getRingtone(context, uri)?.getTitle(context) ?: s.customSound
         onChosen(NotificationSound.Custom(uri.toString(), title))
     }
 
@@ -179,7 +175,7 @@ private fun NotificationSoundDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Notification sound") },
+        title = { Text(s.notificationSound) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 options.forEach { option ->
@@ -193,7 +189,7 @@ private fun NotificationSoundDialog(
                             },
                     ) {
                         RadioButton(selected = option == selected, onClick = null)
-                        Text(option.label(), modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp))
+                        Text(soundLabel(option, s), modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp))
                     }
                 }
                 TextButton(
@@ -211,17 +207,30 @@ private fun NotificationSoundDialog(
                         )
                     },
                 ) {
-                    Text("Choose from device…")
+                    Text(s.chooseFromDevice)
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = { onChosen(selected) }) { Text("OK") }
+            TextButton(onClick = { onChosen(selected) }) { Text(s.ok) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
     )
+}
+
+internal fun soundLabel(sound: NotificationSound, strings: Strings): String = when (sound) {
+    NotificationSound.Silent -> strings.soundSilent
+    NotificationSound.SystemDefault -> strings.soundSystemDefault
+    is NotificationSound.BuiltIn -> strings.builtInSoundName(sound.key)
+    is NotificationSound.Custom -> sound.label
+}
+
+private fun streamLabel(stream: SoundStream, strings: Strings): String = when (stream) {
+    SoundStream.Notification -> strings.streamNotification
+    SoundStream.Alarm -> strings.streamAlarm
+    SoundStream.Media -> strings.streamMedia
 }
 
 /**

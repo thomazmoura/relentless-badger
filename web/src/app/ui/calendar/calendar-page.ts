@@ -6,10 +6,13 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { CalendarEntry } from '../../core/domain/calendar-entries';
 import {
   formatDateTime,
   formatDayTitle,
+  formatMonthTitle,
   prefers24Hour,
   shortWeekdayNames,
 } from '../../core/domain/format';
@@ -41,22 +44,24 @@ interface DayCell {
   imports: [MatButtonModule, MatChipsModule, MatDividerModule, MatIconModule, MatToolbarModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <mat-toolbar><span>Calendar</span></mat-toolbar>
+    <mat-toolbar
+      ><span>{{ s().tabCalendar }}</span></mat-toolbar
+    >
 
     <div class="body">
       <div class="page-body">
         <div class="month">
-          <button matIconButton aria-label="Previous month" (click)="stepMonth(-1)">
+          <button matIconButton [attr.aria-label]="s().previousMonth" (click)="stepMonth(-1)">
             <mat-icon>chevron_left</mat-icon>
           </button>
           <span class="label">{{ monthLabel() }}</span>
-          <button matIconButton aria-label="Next month" (click)="stepMonth(1)">
+          <button matIconButton [attr.aria-label]="s().nextMonth" (click)="stepMonth(1)">
             <mat-icon>chevron_right</mat-icon>
           </button>
         </div>
 
         <div class="grid weekdays">
-          @for (name of weekdayNames; track name) {
+          @for (name of weekdayNames(); track $index) {
             <span class="weekday">{{ name }}</span>
           }
         </div>
@@ -84,7 +89,7 @@ interface DayCell {
 
         <div class="selected-day">
           <span class="date">{{ selectedLabel() }}</span>
-          <button matIconButton aria-label="Open day overview" (click)="openDayOverview()">
+          <button matIconButton [attr.aria-label]="s().openDayOverview" (click)="openDayOverview()">
             <mat-icon>today</mat-icon>
           </button>
           <mat-chip-listbox hideSingleSelectionIndicator>
@@ -92,13 +97,13 @@ interface DayCell {
               [selected]="state.showCancelledInCalendar()"
               (selectionChange)="state.toggleShowCancelled($any($event).selected)"
             >
-              Show cancelled
+              {{ s().showCancelled }}
             </mat-chip-option>
           </mat-chip-listbox>
         </div>
 
         @if (state.selectedDayEntries().length === 0) {
-          <p class="empty">Nothing on this day.</p>
+          <p class="empty">{{ s().nothingOnThisDay }}</p>
         } @else {
           @for (entry of state.selectedDayEntries(); track entry.taskId + ':' + entry.atMillis) {
             <div class="entry">
@@ -113,12 +118,10 @@ interface DayCell {
                 <span class="title" [class.cancelled]="entry.kind === 'cancelled'">{{
                   entry.title
                 }}</span>
-                <span class="when"
-                  >{{ prefix(entry) }} {{ formatDateTime(entry.atMillis, use24Hour) }}</span
-                >
+                <span class="when">{{ whenLabel(entry) }}</span>
               </div>
               @if (entry.recurring) {
-                <mat-icon class="repeat" aria-label="Repeats">repeat</mat-icon>
+                <mat-icon class="repeat" [attr.aria-label]="s().repeats">repeat</mat-icon>
               }
             </div>
           }
@@ -244,21 +247,19 @@ interface DayCell {
 })
 export class CalendarPage {
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   private readonly router = inject(Router);
-  readonly weekdayNames = shortWeekdayNames('narrow');
+  readonly weekdayNames = computed(() => shortWeekdayNames('narrow', this.s()));
   readonly use24Hour = prefers24Hour();
-  readonly formatDateTime = formatDateTime;
 
   readonly monthLabel = computed(() => {
     const month = this.state.calendarMonth();
-    return new Intl.DateTimeFormat(undefined, {
-      month: 'long',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(Date.UTC(month.year, month.month - 1, 1));
+    return formatMonthTitle(month.year, month.month, this.s());
   });
 
-  readonly selectedLabel = computed(() => formatDayTitle(this.state.selectedCalendarDate()));
+  readonly selectedLabel = computed(() =>
+    formatDayTitle(this.state.selectedCalendarDate(), this.s()),
+  );
 
   /** The same digest the Today report shows, pointed at the day on screen. */
   protected openDayOverview(): void {
@@ -300,18 +301,21 @@ export class CalendarPage {
   }
 
   kindLabel(entry: CalendarEntry): string {
+    const s = this.s();
     return entry.kind === 'completed'
-      ? 'Completed'
+      ? s.entryCompleted
       : entry.kind === 'cancelled'
-        ? 'Cancelled'
-        : 'Scheduled';
+        ? s.entryCancelled
+        : s.entryScheduled;
   }
 
-  prefix(entry: CalendarEntry): string {
+  whenLabel(entry: CalendarEntry): string {
+    const s = this.s();
+    const at = formatDateTime(entry.atMillis, this.use24Hour, undefined, s);
     return entry.kind === 'completed'
-      ? 'done'
+      ? s.doneAt(at)
       : entry.kind === 'cancelled'
-        ? 'cancelled'
-        : 'starts';
+        ? s.cancelledAt(at)
+        : s.starts(at);
   }
 }

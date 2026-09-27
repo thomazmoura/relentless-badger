@@ -1,4 +1,11 @@
-import { formatDateTime, formatDuration, recurrenceLabel, relativeFuture } from './format';
+import { ENGLISH, PORTUGUESE } from '../i18n/strings';
+import {
+  formatDateTime,
+  formatDayTitle,
+  formatDuration,
+  recurrenceLabel,
+  relativeFuture,
+} from './format';
 import { epochFor } from './time';
 
 // Ported from FormatDateTimeTest.kt, plus the other MainScreen helpers.
@@ -70,5 +77,40 @@ describe('recurrenceLabel', () => {
     const [cadence, days] = label.split(' · ');
     expect(cadence).toBe('every 2 weeks');
     expect(days.split(', ').length).toBe(3);
+  });
+});
+
+describe('in Portuguese', () => {
+  const zone = 'America/Sao_Paulo';
+  const afternoon = epochFor(
+    { year: 2026, month: 7, day: 17, hour: 15, minute: 5, second: 0, millis: 0 },
+    zone,
+  );
+
+  it('puts the day before the month', () => {
+    expect(formatDateTime(afternoon, true, zone, PORTUGUESE)).toBe('17 de jul, 15:05');
+  });
+
+  it('names the weekday in Portuguese in day titles', () => {
+    expect(formatDayTitle({ year: 2026, month: 7, day: 17 }, PORTUGUESE)).toBe(
+      'sexta-feira, 17 de jul',
+    );
+  });
+
+  it('spells minutes the Portuguese way in durations', () => {
+    expect(formatDuration(45, PORTUGUESE)).toBe('45min');
+    expect(formatDuration(90, PORTUGUESE)).toBe('1h 30min');
+    expect(formatDuration(90)).toBe('1h 30m');
+  });
+
+  it('reads recurrence in Portuguese', () => {
+    expect(recurrenceLabel({ everyN: 3, unit: 'days', daysOfWeek: 0 }, PORTUGUESE)).toBe(
+      'a cada 3 dias',
+    );
+  });
+
+  it('titles reminders with the badger and the task', () => {
+    expect(ENGLISH.notificationTitle('water plants')).toBe('Badger: water plants');
+    expect(PORTUGUESE.notificationTitle('regar as plantas')).toBe('Texugo: regar as plantas');
   });
 });

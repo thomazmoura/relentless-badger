@@ -58,7 +58,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.Locale
+import java.time.YearMonth
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +68,7 @@ fun CalendarScreen(viewModel: AppViewModel) {
     val month by viewModel.calendarMonth.collectAsState()
     val selectedDate = viewModel.selectedCalendarDate
     val use24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val s = LocalStrings.current
 
     val showCancelled = viewModel.showCancelledInCalendar
 
@@ -76,7 +77,7 @@ fun CalendarScreen(viewModel: AppViewModel) {
     }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Calendar") }) },
+        topBar = { TopAppBar(title = { Text(s.tabCalendar) }) },
     ) { padding ->
         Column(
             modifier = Modifier
@@ -89,16 +90,16 @@ fun CalendarScreen(viewModel: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = { viewModel.showCalendarMonth(month.minusMonths(1)) }) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Previous month")
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = s.previousMonth)
                 }
                 Text(
-                    month.format(monthTitleFormatter),
+                    formatMonthTitle(month, s),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
                 )
                 IconButton(onClick = { viewModel.showCalendarMonth(month.plusMonths(1)) }) {
-                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Next month")
+                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = s.nextMonth)
                 }
             }
 
@@ -106,7 +107,7 @@ fun CalendarScreen(viewModel: AppViewModel) {
                 // Monday-first, matching the recurrence picker and bitmask.
                 DayOfWeek.entries.forEach { day ->
                     Text(
-                        day.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+                        day.getDisplayName(TextStyle.NARROW, s.locale),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -148,27 +149,27 @@ fun CalendarScreen(viewModel: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    formatDayTitle(selectedDate),
+                    formatDayTitle(selectedDate, s),
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = { viewModel.dayOverviewDate = selectedDate }) {
-                    Icon(Icons.Filled.Today, contentDescription = "Open day overview")
+                    Icon(Icons.Filled.Today, contentDescription = s.openDayOverview)
                 }
                 FilterChip(
                     selected = showCancelled,
                     onClick = {
                         viewModel.showCancelledInCalendar = !showCancelled
                     },
-                    label = { Text("Show cancelled") },
+                    label = { Text(s.showCancelled) },
                 )
             }
 
             val dayEntries = entries[selectedDate].orEmpty()
             if (dayEntries.isEmpty()) {
                 Text(
-                    "Nothing on this day.",
+                    s.nothingOnThisDay,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 16.dp),
@@ -247,6 +248,7 @@ private fun DayCell(
 
 @Composable
 private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -260,9 +262,9 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
                 CalendarEntryKind.SCHEDULED -> Icons.Filled.Schedule
             },
             contentDescription = when (entry.kind) {
-                CalendarEntryKind.COMPLETED -> "Completed"
-                CalendarEntryKind.CANCELLED -> "Cancelled"
-                CalendarEntryKind.SCHEDULED -> "Scheduled"
+                CalendarEntryKind.COMPLETED -> s.entryCompleted
+                CalendarEntryKind.CANCELLED -> s.entryCancelled
+                CalendarEntryKind.SCHEDULED -> s.entryScheduled
             },
             tint = when (entry.kind) {
                 CalendarEntryKind.COMPLETED -> MaterialTheme.colorScheme.primary
@@ -287,9 +289,9 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
             )
             Text(
                 when (entry.kind) {
-                    CalendarEntryKind.COMPLETED -> "done ${formatDateTime(entry.atMillis, use24Hour)}"
-                    CalendarEntryKind.CANCELLED -> "cancelled ${formatDateTime(entry.atMillis, use24Hour)}"
-                    CalendarEntryKind.SCHEDULED -> "starts ${formatDateTime(entry.atMillis, use24Hour)}"
+                    CalendarEntryKind.COMPLETED -> s.doneAt(formatDateTime(entry.atMillis, use24Hour, s))
+                    CalendarEntryKind.CANCELLED -> s.cancelledAt(formatDateTime(entry.atMillis, use24Hour, s))
+                    CalendarEntryKind.SCHEDULED -> s.starts(formatDateTime(entry.atMillis, use24Hour, s))
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -298,7 +300,7 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
         if (entry.recurring) {
             Icon(
                 Icons.Filled.Repeat,
-                contentDescription = "Repeats",
+                contentDescription = s.repeats,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(16.dp),
             )
@@ -306,4 +308,6 @@ private fun CalendarEntryRow(entry: CalendarEntry, use24Hour: Boolean) {
     }
 }
 
-private val monthTitleFormatter = DateTimeFormatter.ofPattern("MMMM yyyy")
+/** "September 2026" or "setembro de 2026". */
+internal fun formatMonthTitle(month: YearMonth, strings: Strings = Strings.English): String =
+    month.format(DateTimeFormatter.ofPattern(strings.monthTitlePattern, strings.locale))

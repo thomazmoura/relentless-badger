@@ -9,6 +9,7 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * A clock face in a dialog, handing back the picked time of day. Shared by the
@@ -23,6 +24,7 @@ fun TimePickerDialog(
     onDismiss: () -> Unit,
     onPicked: (hour: Int, minute: Int) -> Unit,
 ) {
+    val s = LocalStrings.current
     val timeState = rememberTimePickerState(
         initialHour = initialHour,
         initialMinute = initialMinute,
@@ -30,16 +32,16 @@ fun TimePickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
-            TextButton(onClick = { onPicked(timeState.hour, timeState.minute) }) { Text("Set") }
+            TextButton(onClick = { onPicked(timeState.hour, timeState.minute) }) { Text(s.setAction) }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
         text = { TimePicker(state = timeState) },
     )
 }
 
-private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
+private val timeFormatter12: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH)
 private val timeFormatter24: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** A minute of the day as a clock time, in the system's 12- or 24-hour style. */

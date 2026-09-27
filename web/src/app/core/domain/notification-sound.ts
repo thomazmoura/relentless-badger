@@ -1,3 +1,5 @@
+import { ENGLISH, Strings } from '../i18n/strings';
+
 /**
  * What a nag sounds like on this device. Local-only, like on Android: an
  * uploaded sound lives in this browser's storage and means nothing on another
@@ -15,9 +17,9 @@ export type NotificationSound =
   /** A sound uploaded by the user, with the file name it had. */
   | { readonly kind: 'custom'; readonly uri: string; readonly label: string };
 
+/** Named for display by Strings.builtInSoundName, so the name can follow the language. */
 export interface BuiltInSound {
   readonly key: string;
-  readonly label: string;
 }
 
 export const SILENT: NotificationSound = { kind: 'silent' };
@@ -29,26 +31,29 @@ export const SYSTEM_DEFAULT: NotificationSound = { kind: 'system' };
  * the asset files are named after them on both platforms.
  */
 export const BUILT_IN_SOUNDS: readonly BuiltInSound[] = [
-  { key: 'simple-01', label: 'Simple' },
-  { key: 'simple-02', label: 'Simple 2' },
-  { key: 'decorative-01', label: 'Decorative' },
-  { key: 'decorative-02', label: 'Decorative 2' },
-  { key: 'ambient', label: 'Ambient' },
-  { key: 'high-intensity', label: 'Urgent' },
+  { key: 'simple-01' },
+  { key: 'simple-02' },
+  { key: 'decorative-01' },
+  { key: 'decorative-02' },
+  { key: 'ambient' },
+  { key: 'high-intensity' },
 ];
 
 export function builtIn(key: string): NotificationSound {
   return { kind: 'builtin', key };
 }
 
-export function notificationSoundLabel(sound: NotificationSound): string {
+export function notificationSoundLabel(
+  sound: NotificationSound,
+  strings: Strings = ENGLISH,
+): string {
   switch (sound.kind) {
     case 'silent':
-      return 'Silent';
+      return strings.soundSilent;
     case 'system':
-      return 'System default';
+      return strings.soundSystemDefault;
     case 'builtin':
-      return BUILT_IN_SOUNDS.find((s) => s.key === sound.key)?.label ?? sound.key;
+      return strings.builtInSoundName(sound.key);
     case 'custom':
       return sound.label;
   }

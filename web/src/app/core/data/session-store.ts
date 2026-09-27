@@ -1,5 +1,6 @@
 import { Signal } from '@angular/core';
 import { DEFAULT_WAIT_MINUTES, Session, SettingsDto } from '../domain/models';
+import { LanguagePreference } from '../domain/language';
 import { NotificationSound, toStorageString } from '../domain/notification-sound';
 import { BadgerStore } from './local-store';
 
@@ -17,6 +18,11 @@ export interface SettingsStore {
    * not the account, so a pull must never clobber it.
    */
   saveNotificationSound(sound: NotificationSound): Promise<void>;
+  /**
+   * The language the app speaks. Local like the sound: it describes this
+   * browser's user, and a pull must never clobber it.
+   */
+  saveLanguage(language: LanguagePreference): Promise<void>;
   markSettingsDirty(): Promise<void>;
   clearSettingsDirty(): Promise<void>;
   isSettingsDirty(): Promise<boolean>;
@@ -56,6 +62,10 @@ export class LocalSessionStore implements SettingsStore {
 
   async saveNotificationSound(sound: NotificationSound): Promise<void> {
     this.store.patchSession({ notificationSound: toStorageString(sound) });
+  }
+
+  async saveLanguage(language: LanguagePreference): Promise<void> {
+    this.store.patchSession({ language });
   }
 
   async markSettingsDirty(): Promise<void> {

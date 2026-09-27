@@ -1,10 +1,12 @@
+import { ENGLISH, Strings } from '../i18n/strings';
 import { Recurrence } from './models';
 import { dateAt, dayOfWeek, LocalDate, partsAt, systemZone } from './time';
 
 /**
  * User-facing strings, kept identical to the Android app's so the two clients
  * read the same. Rendering goes through Intl in the device zone, matching
- * java.time's ZoneId.systemDefault() formatters.
+ * java.time's ZoneId.systemDefault() formatters. Each takes the label table
+ * for the language in force, English unless told otherwise.
  */
 
 /** DateFormat.is24HourFormat's stand-in: the browser locale's clock convention. */
@@ -12,16 +14,15 @@ export function prefers24Hour(): boolean {
   return Intl.DateTimeFormat().resolvedOptions().hour12 === false;
 }
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-/** "Jul 17, 3:05 PM" or "Jul 17, 15:05" — DateTimeFormatter "MMM d, h:mm a" / "MMM d, HH:mm". */
+/** "Jul 17, 3:05 PM", "Jul 17, 15:05" or "17 de jul, 15:05". */
 export function formatDateTime(
   epochMillis: number,
   use24Hour: boolean,
   zone: string = systemZone(),
+  strings: Strings = ENGLISH,
 ): string {
   const p = partsAt(epochMillis, zone);
-  const date = `${MONTHS[p.month - 1]} ${p.day}`;
+  const date = strings.dayAndMonth(p.day, p.month);
   if (use24Hour) {
     return `${date}, ${pad2(p.hour)}:${pad2(p.minute)}`;
   }
@@ -50,51 +51,64 @@ function pad2(value: number): string {
 }
 
 /** "now", "in 5 min", "in 3 h", "in 2 d". */
-export function relativeFuture(epochMillis: number, nowMillis: number): string {
+export function relativeFuture(
+  epochMillis: number,
+  nowMillis: number,
+  strings: Strings = ENGLISH,
+): string {
   const minutes = Math.trunc((epochMillis - nowMillis) / 60_000);
-  if (minutes < 1) return 'now';
-  if (minutes < 60) return `in ${minutes} min`;
-  if (minutes < 60 * 24) return `in ${Math.trunc(minutes / 60)} h`;
-  return `in ${Math.trunc(minutes / (60 * 24))} d`;
+  if (minutes < 1) return strings.relativeNow;
+  if (minutes < 60) return strings.inMinutes(minutes);
+  if (minutes < 60 * 24) return strings.inHours(Math.trunc(minutes / 60));
+  return strings.inDays(Math.trunc(minutes / (60 * 24)));
 }
 
 /** "45m", "4h", "1h 30m" — also used for the reminder's Wait button. */
-export function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes % 60 === 0) return `${Math.trunc(minutes / 60)}h`;
-  return `${Math.trunc(minutes / 60)}h ${minutes % 60}m`;
+export function formatDuration(minutes: number, strings: Strings = ENGLISH): string {
+  return strings.duration(minutes);
 }
 
 /** Monday-first short weekday names, matching the recurrence bitmask's bit order. */
-export function shortWeekdayNames(style: 'short' | 'narrow' = 'short'): string[] {
-  const formatter = new Intl.DateTimeFormat(undefined, { weekday: style, timeZone: 'UTC' });
+export function shortWeekdayNames(
+  style: 'short' | 'narrow' = 'short',
+  strings: Strings = ENGLISH,
+): string[] {
+  const formatter = new Intl.DateTimeFormat(strings.locale, { weekday: style, timeZone: 'UTC' });
   // 2024-01-01 was a Monday.
   return Array.from({ length: 7 }, (_, i) => formatter.format(Date.UTC(2024, 0, 1 + i)));
 }
 
 /** "Friday, Sep 18" — how a day names itself once it isn't today. */
-export function formatDayTitle(date: LocalDate): string {
+export function formatDayTitle(date: LocalDate, strings: Strings = ENGLISH): string {
   // UTC, because the date carries no zone of its own to render it in.
-  return new Intl.DateTimeFormat(undefined, {
+  const weekday = new Intl.DateTimeFormat(strings.locale, {
     weekday: 'long',
-    month: 'short',
-    day: 'numeric',
     timeZone: 'UTC',
   }).format(Date.UTC(date.year, date.month - 1, date.day));
+  return `${weekday}, ${strings.dayAndMonth(date.day, date.month)}`;
+}
+
+/** "September 2026" or "setembro de 2026". */
+export function formatMonthTitle(year: number, month: number, strings: Strings = ENGLISH): string {
+  return new Intl.DateTimeFormat(strings.locale, {
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(Date.UTC(year, month - 1, 1));
 }
 
 /** "every day", "every 3 days", "every week", "every 2 weeks · Mon, Wed, Fri". */
-export function recurrenceLabel(recurrence: Recurrence): string {
+export function recurrenceLabel(recurrence: Recurrence, strings: Strings = ENGLISH): string {
   const cadence =
     recurrence.unit === 'days'
       ? recurrence.everyN === 1
-        ? 'every day'
-        : `every ${recurrence.everyN} days`
+        ? strings.everyDay
+        : strings.everyNDays(recurrence.everyN)
       : recurrence.everyN === 1
-        ? 'every week'
-        : `every ${recurrence.everyN} weeks`;
+        ? strings.everyWeek
+        : strings.everyNWeeks(recurrence.everyN);
   if (recurrence.unit !== 'weeks') return cadence;
-  const names = shortWeekdayNames();
+  const names = shortWeekdayNames('short', strings);
   const days = names.filter((_, index) => (recurrence.daysOfWeek & (1 << index)) !== 0).join(', ');
   return `${cadence} · ${days}`;
 }

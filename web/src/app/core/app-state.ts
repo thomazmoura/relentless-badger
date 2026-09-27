@@ -5,6 +5,8 @@ import { GoogleAuthService } from './auth/google-auth.service';
 import { buildMonthEntries, CalendarEntry } from './domain/calendar-entries';
 import { friendlyMessage } from './domain/errors';
 import { rank } from './domain/fuzzy';
+import { LanguagePreference } from './domain/language';
+import { I18n } from './i18n/i18n.service';
 import { NotificationSound } from './domain/notification-sound';
 import {
   CompletedTask,
@@ -42,6 +44,7 @@ export class AppState {
   private readonly badger = inject(BadgerService);
   private readonly storeService = inject(BadgerStoreService);
   private readonly google = inject(GoogleAuthService);
+  private readonly i18n = inject(I18n);
 
   private readonly repository = this.badger.repository;
   readonly zone = systemZone();
@@ -171,7 +174,9 @@ export class AppState {
   // --- actions -------------------------------------------------------------
 
   async signInWithGoogle(buttonHost: HTMLElement, baseUrl: string): Promise<void> {
-    await this.signIn(baseUrl, () => this.google.renderButton(buttonHost));
+    await this.signIn(baseUrl, () =>
+      this.google.renderButton(buttonHost, this.i18n.strings().locale),
+    );
   }
 
   async signInAsDev(baseUrl: string): Promise<void> {
@@ -180,7 +185,7 @@ export class AppState {
 
   private async signIn(baseUrl: string, idToken: () => Promise<string>): Promise<void> {
     if (baseUrl.trim() === '') {
-      this.errorMessage.set('Enter the server URL first.');
+      this.errorMessage.set(this.i18n.strings().enterServerUrl);
       return;
     }
     await this.runBusy(async () => {
@@ -202,7 +207,7 @@ export class AppState {
     try {
       await this.badger.sync.flush();
     } catch (error) {
-      if (interactive) this.errorMessage.set(friendlyMessage(error));
+      if (interactive) this.errorMessage.set(friendlyMessage(error, this.i18n.strings()));
     }
     await this.loadTitles();
   }
@@ -218,7 +223,7 @@ export class AppState {
     this.quickAddRecurrence.set(null);
     await this.runBusy(async () => {
       if (recurrence !== null && firstWarning === null) {
-        throw new Error('Pick a start time for a repeating task.');
+        throw new Error(this.i18n.strings().pickStartForRepeating);
       }
       await this.repository.addTask(trimmed, firstWarning, recurrence);
       await this.loadTitles();
@@ -311,14 +316,20 @@ export class AppState {
 
   /**
    * Commits everything the Settings page holds in one go, whether from its
-   * Apply button or from leaving the page. The sound stays in this browser;
-   * the rest syncs. Resolves false when saving failed and the error is showing.
+   * Apply button or from leaving the page. Sound and language stay in this
+   * browser; the rest syncs. Resolves false when saving failed and the error is
+   * showing.
    */
-  async saveSettings(settings: SettingsDto, sound: NotificationSound): Promise<boolean> {
+  async saveSettings(
+    settings: SettingsDto,
+    sound: NotificationSound,
+    language: LanguagePreference,
+  ): Promise<boolean> {
     let saved = false;
     await this.runBusy(async () => {
       await this.repository.updateSettings(settings);
       await this.repository.updateNotificationSound(sound);
+      await this.repository.updateLanguage(language);
       saved = true;
     });
     return saved;
@@ -375,7 +386,7 @@ export class AppState {
     try {
       await block();
     } catch (error) {
-      this.errorMessage.set(friendlyMessage(error));
+      this.errorMessage.set(friendlyMessage(error, this.i18n.strings()));
     } finally {
       this.busy.set(false);
     }

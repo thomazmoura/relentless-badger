@@ -1,3 +1,4 @@
+import { Language } from '../domain/language';
 import { OpenTask } from '../domain/models';
 import { NotificationSound } from '../domain/notification-sound';
 
@@ -11,11 +12,20 @@ export interface ReminderScheduler {
   schedule(task: OpenTask): void;
   cancel(taskId: string): void;
   dismissNotification(taskId: string): void;
-  /** sound is what the nag rings with. */
-  showReminder(task: OpenTask, defaultWaitMinutes: number, sound: NotificationSound): void;
+  /** sound is what the nag rings with; language is what it reads in. */
+  showReminder(
+    task: OpenTask,
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void;
 
   /** Posts the reminder-shaped notification behind the Advanced settings button. */
-  showTestNotification(defaultWaitMinutes: number, sound: NotificationSound): void;
+  showTestNotification(
+    defaultWaitMinutes: number,
+    sound: NotificationSound,
+    language: Language,
+  ): void;
 }
 
 /**

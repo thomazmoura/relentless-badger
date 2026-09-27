@@ -1,11 +1,19 @@
 import { Signal } from '@angular/core';
-import { ApiError, NetworkError } from '../domain/errors';
+import { ApiError, InvalidServerUrlError, NetworkError } from '../domain/errors';
+import {
+  deviceLanguageTag,
+  Language,
+  LanguagePreference,
+  parseLanguagePreference,
+  resolveLanguage,
+} from '../domain/language';
 import {
   CompletedTask,
   ConcludedTask,
   defaultWaitMinutes,
   OpenTask,
   Recurrence,
+  Session,
   SettingsDto,
   taskRecurrence,
 } from '../domain/models';
@@ -36,7 +44,15 @@ export class TaskRepository {
     private readonly settings: SettingsStore,
     private readonly syncScheduler: SyncScheduler,
     private readonly timeSource: Clock = SYSTEM_CLOCK,
+    // Read per call: the browser language can change while the app lives, and
+    // a reminder should follow a "device default" choice to the new one.
+    private readonly deviceLanguage: () => string = deviceLanguageTag,
   ) {}
+
+  /** The language session asks for, resolving "device default" against the browser now. */
+  languageOf(session: Session): Language {
+    return resolveLanguage(parseLanguagePreference(session.language), this.deviceLanguage());
+  }
 
   openTasks(): Signal<OpenTask[]> {
     return this.dao.observeActive();
@@ -391,6 +407,7 @@ export class TaskRepository {
       task,
       session.waitMinutes[session.defaultWaitIndex] ?? session.waitMinutes[0],
       parseNotificationSound(session.notificationSound),
+      this.languageOf(session),
     );
     const next: OpenTask = {
       ...task,
@@ -412,6 +429,7 @@ export class TaskRepository {
     this.scheduler.showTestNotification(
       defaultWaitMinutes(session),
       parseNotificationSound(session.notificationSound),
+      this.languageOf(session),
     );
   }
 
@@ -421,6 +439,14 @@ export class TaskRepository {
    */
   async updateNotificationSound(sound: NotificationSound): Promise<void> {
     await this.settings.saveNotificationSound(sound);
+  }
+
+  /**
+   * Switches the language the app and its reminders speak. Local like the
+   * sound: never flagged dirty, never pushed, never touched by a pull.
+   */
+  async updateLanguage(language: LanguagePreference): Promise<void> {
+    await this.settings.saveLanguage(language);
   }
 
   /**
@@ -454,16 +480,16 @@ export class TaskRepository {
   async changeServer(baseUrl: string): Promise<void> {
     const normalized = baseUrl.trim().replace(/\/+$/, '');
     if (normalized === '') {
-      throw new Error('Enter the server URL first.');
+      throw new InvalidServerUrlError(true);
     }
     let parsed: URL;
     try {
       parsed = new URL(`${normalized}/`);
     } catch {
-      throw new Error("That doesn't look like a valid http(s) URL.");
+      throw new InvalidServerUrlError(false);
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      throw new Error("That doesn't look like a valid http(s) URL.");
+      throw new InvalidServerUrlError(false);
     }
     await this.settings.saveBaseUrl(normalized);
     this.syncScheduler.requestSync();

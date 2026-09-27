@@ -101,4 +101,19 @@ class RecurringReportTextTest {
 
         assertEquals("RelentlessBadger — Recurring\n\nNo recurring tasks.", text)
     }
+
+    @Test
+    fun `portuguese names the sections and the brand`() {
+        assertEquals("A cada 4 dias", cadenceLabel(RecurringCadence(4, RecurUnit.DAYS), Strings.Portuguese))
+        assertEquals(
+            "Texugo Insistente — Recorrentes\n\nNenhuma tarefa recorrente.",
+            renderRecurringReport(
+                RecurringReport(emptyList()),
+                "Recorrentes",
+                use24Hour = true,
+                style = OverviewTextStyle.PLAIN,
+                strings = Strings.Portuguese,
+            ),
+        )
+    }
 }

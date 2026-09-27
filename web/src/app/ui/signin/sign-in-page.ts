@@ -14,6 +14,7 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
 
 /**
  * Sign-in. The server URL is only shown when the build has no baked-in default
@@ -31,23 +32,21 @@ import { AppState } from '../../core/app-state';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="page">
-      <h1>RelentlessBadger</h1>
-      <p class="tagline">The to-do list that won't shut up until you do the thing.</p>
+      <h1>{{ s().appName }}</h1>
+      <p class="tagline">{{ s().tagline }}</p>
 
       @if (showAdvanced()) {
         <mat-form-field appearance="outline" class="field">
-          <mat-label>Server URL</mat-label>
+          <mat-label>{{ s().serverUrl }}</mat-label>
           <input matInput [ngModel]="baseUrl()" (ngModelChange)="baseUrl.set($event)" />
-          <mat-hint>The machine on your network running the API</mat-hint>
+          <mat-hint>{{ s().serverUrlHint }}</mat-hint>
         </mat-form-field>
       }
 
       @if (state.devLoginAvailable) {
-        <p class="note">
-          Google Sign-In is not configured in this build (googleWebClientId is empty).
-        </p>
+        <p class="note">{{ s().googleNotConfigured }}</p>
         <button matButton="outlined" [disabled]="state.busy()" (click)="signInAsDev()">
-          Dev sign-in (server dev bypass)
+          {{ s().devSignIn }}
         </button>
       } @else {
         <div #googleButton class="google"></div>
@@ -55,7 +54,7 @@ import { AppState } from '../../core/app-state';
 
       @if (state.configuredBaseUrl !== '') {
         <button matButton (click)="showAdvanced.set(!showAdvanced())">
-          {{ showAdvanced() ? 'Hide advanced' : 'Advanced' }}
+          {{ showAdvanced() ? s().hideAdvanced : s().advanced }}
         </button>
       }
 
@@ -90,6 +89,7 @@ import { AppState } from '../../core/app-state';
 })
 export class SignInPage {
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   private readonly router = inject(Router);
 
   private readonly googleButton = viewChild<ElementRef<HTMLElement>>('googleButton');

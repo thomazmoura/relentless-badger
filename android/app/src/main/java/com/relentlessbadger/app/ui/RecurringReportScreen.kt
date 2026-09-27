@@ -51,11 +51,12 @@ fun RecurringReportScreen(
 ) {
     val tasks by viewModel.openTasks.collectAsState()
     val use24Hour = DateFormat.is24HourFormat(LocalContext.current)
+    val s = LocalStrings.current
     val snackbarHostState = remember { SnackbarHostState() }
     // Ticks so an occurrence reaching its start time turns into "nagging" on its own.
     val nowMillis = rememberTickingNow()
     val report = remember(tasks, nowMillis) { buildRecurringReport(tasks, nowMillis) }
-    val title = "Recurring"
+    val title = s.reportRecurring
 
     Scaffold(
         topBar = {
@@ -63,7 +64,7 @@ fun RecurringReportScreen(
                 title = { Text(title) },
                 actions = {
                     ReportActions(title, snackbarHostState) { style ->
-                        renderRecurringReport(report, title, use24Hour, style)
+                        renderRecurringReport(report, title, use24Hour, style, s)
                     }
                 },
             )
@@ -80,7 +81,7 @@ fun RecurringReportScreen(
 
             if (report.isEmpty) {
                 Text(
-                    "No recurring tasks.",
+                    s.noRecurringTasks,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(vertical = 24.dp),
@@ -90,7 +91,7 @@ fun RecurringReportScreen(
 
             LazyColumn(Modifier.fillMaxSize()) {
                 report.sections.forEach { section ->
-                    item(key = "header:${section.cadence}") { SectionHeader(cadenceLabel(section.cadence)) }
+                    item(key = "header:${section.cadence}") { SectionHeader(cadenceLabel(section.cadence, s)) }
                     items(section.items, key = { it.taskId }) { item -> RecurringRow(item, use24Hour) }
                 }
             }
@@ -100,6 +101,7 @@ fun RecurringReportScreen(
 
 @Composable
 private fun RecurringRow(item: RecurringReportItem, use24Hour: Boolean) {
+    val s = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -108,7 +110,7 @@ private fun RecurringRow(item: RecurringReportItem, use24Hour: Boolean) {
     ) {
         Icon(
             imageVector = if (item.nagging) Icons.Filled.NotificationsActive else Icons.Filled.Repeat,
-            contentDescription = if (item.nagging) "Nagging" else "Repeats",
+            contentDescription = if (item.nagging) s.nagging else s.repeats,
             tint = if (item.nagging) {
                 MaterialTheme.colorScheme.primary
             } else {
@@ -125,12 +127,12 @@ private fun RecurringRow(item: RecurringReportItem, use24Hour: Boolean) {
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                recurringScheduleLabel(item, use24Hour),
+                recurringScheduleLabel(item, use24Hour, s),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                recurringNextLabel(item, use24Hour),
+                recurringNextLabel(item, use24Hour, s),
                 style = MaterialTheme.typography.bodySmall,
                 color = if (item.nagging) {
                     MaterialTheme.colorScheme.primary
@@ -150,42 +152,52 @@ internal fun renderRecurringReport(
     title: String,
     use24Hour: Boolean,
     style: OverviewTextStyle,
+    strings: Strings = Strings.English,
 ): String {
     val bold = if (style == OverviewTextStyle.MARKDOWN) "*" else ""
     val italic = if (style == OverviewTextStyle.MARKDOWN) "_" else ""
-    val lines = mutableListOf("${bold}RelentlessBadger — $title$bold")
+    val lines = mutableListOf("${bold}${strings.reportBrand} — $title$bold")
 
     if (report.isEmpty) {
         lines += ""
-        lines += "No recurring tasks."
+        lines += strings.noRecurringTasks
         return lines.joinToString("\n")
     }
 
     report.sections.forEach { section ->
         lines += ""
-        lines += "$bold${cadenceLabel(section.cadence)}$bold"
+        lines += "$bold${cadenceLabel(section.cadence, strings)}$bold"
         section.items.forEach {
             lines += "• ${it.title} " +
-                "$italic(${recurringScheduleLabel(it, use24Hour)} · ${recurringNextLabel(it, use24Hour)})$italic"
+                "$italic(${recurringScheduleLabel(it, use24Hour, strings)} · " +
+                "${recurringNextLabel(it, use24Hour, strings)})$italic"
         }
     }
     return lines.joinToString("\n")
 }
 
 /** "Daily", "Weekly", "Every 4 days", "Every 2 weeks". */
-internal fun cadenceLabel(cadence: RecurringCadence): String = when {
-    cadence.everyN == 1 && cadence.unit == RecurUnit.DAYS -> "Daily"
-    cadence.everyN == 1 -> "Weekly"
-    cadence.unit == RecurUnit.DAYS -> "Every ${cadence.everyN} days"
-    else -> "Every ${cadence.everyN} weeks"
+internal fun cadenceLabel(cadence: RecurringCadence, strings: Strings = Strings.English): String = when {
+    cadence.everyN == 1 && cadence.unit == RecurUnit.DAYS -> strings.cadenceDaily
+    cadence.everyN == 1 -> strings.cadenceWeekly
+    cadence.unit == RecurUnit.DAYS -> strings.cadenceEveryNDays(cadence.everyN)
+    else -> strings.cadenceEveryNWeeks(cadence.everyN)
 }
 
 /** "every day at 09:00", "every 2 weeks · Mon, Wed at 6:30 PM". */
-internal fun recurringScheduleLabel(item: RecurringReportItem, use24Hour: Boolean): String =
-    "${recurrenceLabel(item.recurrence)} at ${formatTimeOfDay(item.anchorMillis, use24Hour)}"
+internal fun recurringScheduleLabel(
+    item: RecurringReportItem,
+    use24Hour: Boolean,
+    strings: Strings = Strings.English,
+): String =
+    strings.scheduleAt(recurrenceLabel(item.recurrence, strings), formatTimeOfDay(item.anchorMillis, use24Hour))
 
 /** "next Sep 28, 09:00", or "nagging since Sep 26, 09:00" once it has begun. */
-internal fun recurringNextLabel(item: RecurringReportItem, use24Hour: Boolean): String {
-    val at = formatDateTime(item.nextAtMillis, use24Hour)
-    return if (item.nagging) "nagging since $at" else "next $at"
+internal fun recurringNextLabel(
+    item: RecurringReportItem,
+    use24Hour: Boolean,
+    strings: Strings = Strings.English,
+): String {
+    val at = formatDateTime(item.nextAtMillis, use24Hour, strings)
+    return if (item.nagging) strings.naggingSince(at) else strings.nextAt(at)
 }

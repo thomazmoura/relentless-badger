@@ -36,6 +36,8 @@ data class Session(
     val notificationSound: NotificationSound = NotificationSound.SystemDefault,
     // Which stream that sound plays on, and so which volume it follows.
     val soundStream: SoundStream = SoundStream.Notification,
+    // The language picked in Settings; local to the device, never synced.
+    val language: LanguagePreference = LanguagePreference.System,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
@@ -84,6 +86,12 @@ interface SettingsStore {
      * should be is a property of that phone.
      */
     suspend fun saveSoundStream(stream: SoundStream)
+
+    /**
+     * The language the app speaks. Local like the sound: it describes this
+     * device's user, and a pull must never clobber it.
+     */
+    suspend fun saveLanguage(language: LanguagePreference)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -105,6 +113,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
         val NOTIFICATION_SOUND = stringPreferencesKey("notification_sound")
         val SOUND_STREAM = stringPreferencesKey("sound_stream")
+        val LANGUAGE = stringPreferencesKey("language")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -141,6 +150,7 @@ class SessionStore(private val context: Context) : SettingsStore {
             lastNotificationAtMillis = prefs[Keys.LAST_NOTIFICATION_AT],
             notificationSound = parseNotificationSound(prefs[Keys.NOTIFICATION_SOUND]),
             soundStream = parseSoundStream(prefs[Keys.SOUND_STREAM], prefs[Keys.SOUND_ON_ALARM_STREAM]),
+            language = parseLanguagePreference(prefs[Keys.LANGUAGE]),
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -198,6 +208,10 @@ class SessionStore(private val context: Context) : SettingsStore {
 
     override suspend fun saveSoundStream(stream: SoundStream) {
         context.dataStore.edit { it[Keys.SOUND_STREAM] = stream.storageKey }
+    }
+
+    override suspend fun saveLanguage(language: LanguagePreference) {
+        context.dataStore.edit { it[Keys.LANGUAGE] = language.storageKey }
     }
 
     override suspend fun markSettingsDirty() {

@@ -15,9 +15,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-enum class ReportKind(val label: String) {
-    TODAY("Today"),
-    RECURRING("Recurring"),
+enum class ReportKind(val label: (Strings) -> String) {
+    TODAY({ it.reportToday }),
+    RECURRING({ it.reportRecurring }),
 }
 
 /**
@@ -38,6 +38,7 @@ fun ReportsScreen(viewModel: AppViewModel) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReportSwitch(selected: ReportKind, onChosen: (ReportKind) -> Unit) {
+    val s = LocalStrings.current
     SingleChoiceSegmentedButtonRow(
         modifier = Modifier
             .fillMaxWidth()
@@ -49,7 +50,7 @@ private fun ReportSwitch(selected: ReportKind, onChosen: (ReportKind) -> Unit) {
                 onClick = { onChosen(kind) },
                 shape = SegmentedButtonDefaults.itemShape(kind.ordinal, ReportKind.entries.size),
             ) {
-                Text(kind.label)
+                Text(kind.label(s))
             }
         }
     }

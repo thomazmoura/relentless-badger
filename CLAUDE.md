@@ -30,8 +30,14 @@ both sides.
 
 ## Conventions
 
-- Compose UI labels are hardcoded English literals; `strings.xml` is only for the
-  app name and notification actions. Icons come from `Icons.Filled.*`.
+- The UI speaks English and Brazilian Portuguese, picked in Settings (device
+  default out of the box; stored locally, never synced). Every user-facing label
+  lives in the string tables — `android/.../ui/Strings.kt` and
+  `web/src/app/core/i18n/strings.ts`, same keys, each entry holding both
+  languages — never as a literal in a screen. Compose reads `LocalStrings.current`,
+  Angular reads `inject(I18n).strings()`. `strings.xml` (`values/`, `values-pt/`)
+  only holds the launcher name and the notification channel, which the system
+  shows in the device's language. Icons come from `Icons.Filled.*`.
 - Comments explain *why*, not what — see the existing KDoc/TSDoc for the register.
 
 ## Running things

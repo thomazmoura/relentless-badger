@@ -5,6 +5,7 @@ import { MatDividerModule } from '@angular/material/divider';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { formatDuration } from '../../core/domain/format';
+import { I18n } from '../../core/i18n/i18n.service';
 
 export interface WaitOptionsData {
   readonly title: string;
@@ -29,18 +30,18 @@ export type WaitOptionsResult = number | 'pick';
         @for (minutes of data.waitMinutes; track minutes) {
           <button mat-list-item (click)="close(minutes)">
             <mat-icon matListItemIcon>snooze</mat-icon>
-            <span matListItemTitle>Wait {{ formatDuration(minutes) }}</span>
+            <span matListItemTitle>{{ s().waitFor(formatDuration(minutes, s())) }}</span>
           </button>
         }
         <mat-divider />
         <button mat-list-item (click)="close('pick')">
           <mat-icon matListItemIcon>schedule</mat-icon>
-          <span matListItemTitle>Pick a date &amp; time…</span>
+          <span matListItemTitle>{{ s().pickDateTime }}</span>
         </button>
       </mat-action-list>
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button matButton mat-dialog-close>Cancel</button>
+      <button matButton mat-dialog-close>{{ s().cancel }}</button>
     </mat-dialog-actions>
   `,
   styles: `
@@ -57,6 +58,7 @@ export type WaitOptionsResult = number | 'pick';
   `,
 })
 export class WaitOptionsDialog {
+  readonly s = inject(I18n).strings;
   readonly data = inject<WaitOptionsData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<WaitOptionsDialog, WaitOptionsResult>);
   readonly formatDuration = formatDuration;

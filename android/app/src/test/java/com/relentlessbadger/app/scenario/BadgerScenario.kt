@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.relentlessbadger.app.data.ConcludedTask
+import com.relentlessbadger.app.data.LanguagePreference
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.Recurrence
@@ -41,6 +42,9 @@ class BadgerScenario {
     val settingsStore = FakeSettingsStore()
     val syncRequests = RecordingSyncScheduler()
 
+    /** What the device's system language is set to; English unless a scenario says otherwise. */
+    var deviceLanguageTag = "en-US"
+
     private val db = Room.inMemoryDatabaseBuilder(
         ApplicationProvider.getApplicationContext<Application>(),
         BadgerDb::class.java,
@@ -62,6 +66,7 @@ class BadgerScenario {
         // Pinned so quiet-hours expectations mean the same thing on every
         // machine; wall-clock behavior is what these scenarios are about.
         zoneSource = { SCENARIO_ZONE },
+        deviceLanguageSource = { deviceLanguageTag },
     )
 
     // --- Given ---
@@ -112,6 +117,16 @@ class BadgerScenario {
 
     suspend fun whenNotificationSoundChosen(sound: NotificationSound) =
         repository.updateNotificationSound(sound)
+
+    fun givenDeviceLanguage(tag: String) {
+        deviceLanguageTag = tag
+    }
+
+    suspend fun givenLanguage(language: LanguagePreference) =
+        repository.updateLanguage(language)
+
+    suspend fun whenLanguageChosen(language: LanguagePreference) =
+        repository.updateLanguage(language)
 
     suspend fun givenSoundStream(stream: SoundStream) =
         repository.updateSoundStream(stream)

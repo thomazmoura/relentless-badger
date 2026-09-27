@@ -1,14 +1,16 @@
 import { NgTemplateOutlet } from '@angular/common';
-import { ChangeDetectionStrategy, Component, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { MatButtonToggleModule } from '@angular/material/button-toggle';
+import { I18n } from '../../core/i18n/i18n.service';
+import { Strings } from '../../core/i18n/strings';
 import { OverviewView } from '../today/overview-view';
 import { RecurringView } from './recurring-view';
 
 export type ReportKind = 'today' | 'recurring';
 
-const REPORTS: readonly { readonly kind: ReportKind; readonly label: string }[] = [
-  { kind: 'today', label: 'Today' },
-  { kind: 'recurring', label: 'Recurring' },
+const REPORTS: readonly { readonly kind: ReportKind; readonly label: (s: Strings) => string }[] = [
+  { kind: 'today', label: (s) => s.reportToday },
+  { kind: 'recurring', label: (s) => s.reportRecurring },
 ];
 
 /**
@@ -26,12 +28,12 @@ const REPORTS: readonly { readonly kind: ReportKind; readonly label: string }[] 
       <mat-button-toggle-group
         class="switch"
         hideSingleSelectionIndicator
-        aria-label="Report"
+        [attr.aria-label]="s().reportSwitch"
         [value]="kind()"
         (change)="kind.set($event.value)"
       >
         @for (report of reports; track report.kind) {
-          <mat-button-toggle [value]="report.kind">{{ report.label }}</mat-button-toggle>
+          <mat-button-toggle [value]="report.kind">{{ report.label(s()) }}</mat-button-toggle>
         }
       </mat-button-toggle-group>
     </ng-template>
@@ -68,6 +70,7 @@ const REPORTS: readonly { readonly kind: ReportKind; readonly label: string }[] 
   `,
 })
 export class ReportsPage {
+  protected readonly s = inject(I18n).strings;
   protected readonly reports = REPORTS;
   protected readonly kind = signal<ReportKind>('today');
 }

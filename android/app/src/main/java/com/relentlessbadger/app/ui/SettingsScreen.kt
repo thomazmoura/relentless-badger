@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
@@ -22,9 +23,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
@@ -57,6 +61,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_QUIET_HOURS
+import com.relentlessbadger.app.data.Language
+import com.relentlessbadger.app.data.LanguagePreference
+import com.relentlessbadger.app.data.deviceLanguageTag
+import com.relentlessbadger.app.data.resolveLanguage
 import com.relentlessbadger.app.data.MAX_QUIET_RANGES
 import com.relentlessbadger.app.data.MAX_WAITS
 import com.relentlessbadger.app.data.parseNotificationSound
@@ -74,6 +82,7 @@ fun SettingsScreen(
     onBack: () -> Unit,
 ) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     val use24Hour = DateFormat.is24HourFormat(context)
     val scope = rememberCoroutineScope()
     var initialDelay by rememberSaveable { mutableStateOf(session.initialDelayMinutes.toString()) }
@@ -106,8 +115,10 @@ fun SettingsScreen(
     // Held as their storage forms so they survive process death like the rest.
     var soundKey by rememberSaveable { mutableStateOf(session.notificationSound.toStorageString()) }
     var streamName by rememberSaveable { mutableStateOf(session.soundStream.name) }
+    var languageName by rememberSaveable { mutableStateOf(session.language.name) }
     val sound = parseNotificationSound(soundKey)
     val stream = SoundStream.valueOf(streamName)
+    val language = LanguagePreference.valueOf(languageName)
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) { viewModel.refreshCrashLog() }
     val normalizedServerUrl = serverUrl.trim().trimEnd('/')
@@ -132,7 +143,8 @@ fun SettingsScreen(
         notificationGapValue != session.minNotificationGapSeconds ||
         effectiveQuietHours != session.quietHours ||
         sound != session.notificationSound ||
-        stream != session.soundStream
+        stream != session.soundStream ||
+        language != session.language
 
     fun undo() {
         initialDelay = session.initialDelayMinutes.toString()
@@ -146,6 +158,7 @@ fun SettingsScreen(
         quietHours.addAll(session.quietHours.ifEmpty { DEFAULT_QUIET_HOURS })
         soundKey = session.notificationSound.toStorageString()
         streamName = session.soundStream.name
+        languageName = session.language.name
     }
 
     fun apply(onDone: () -> Unit) {
@@ -158,6 +171,7 @@ fun SettingsScreen(
             notificationGapValue!!,
             sound,
             stream,
+            language,
             onDone = onDone,
         )
     }
@@ -171,7 +185,7 @@ fun SettingsScreen(
             !changed -> onBack()
             valid -> apply(onDone = onBack)
             else -> scope.launch {
-                snackbarHostState.showSnackbar("Fix the highlighted values, or Undo them")
+                snackbarHostState.showSnackbar(s.fixHighlightedOrUndo)
             }
         }
     }
@@ -181,10 +195,10 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(s.settings) },
                 navigationIcon = {
                     IconButton(onClick = ::close) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = s.back)
                     }
                 },
             )
@@ -196,7 +210,7 @@ fun SettingsScreen(
                     ExtendedFloatingActionButton(
                         onClick = ::undo,
                         icon = { Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = null) },
-                        text = { Text("Undo") },
+                        text = { Text(s.undo) },
                         containerColor = MaterialTheme.colorScheme.secondaryContainer,
                         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
@@ -205,11 +219,11 @@ fun SettingsScreen(
                             if (valid && !viewModel.busy) {
                                 apply(onDone = {})
                             } else if (!valid) {
-                                scope.launch { snackbarHostState.showSnackbar("Fix the highlighted values first") }
+                                scope.launch { snackbarHostState.showSnackbar(s.fixHighlightedFirst) }
                             }
                         },
                         icon = { Icon(Icons.Filled.Check, contentDescription = null) },
-                        text = { Text("Apply") },
+                        text = { Text(s.applyAction) },
                     )
                 }
             }
@@ -222,8 +236,15 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
         ) {
+            LanguageSetting(
+                current = language,
+                onChosen = { languageName = it.name },
+            )
+
+            Spacer(Modifier.height(24.dp))
+
             Text(
-                "Defaults applied to every new task. Existing tasks keep the values they were created with.",
+                s.defaultsIntro,
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -232,7 +253,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = initialDelay,
                 onValueChange = { initialDelay = it },
-                label = { Text("First reminder after (minutes)") },
+                label = { Text(s.firstReminderAfter) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 isError = initialDelay.isNotEmpty() && (initialDelayValue ?: -1) < 0,
@@ -244,7 +265,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = repeatInterval,
                 onValueChange = { repeatInterval = it },
-                label = { Text("Then nag every (minutes)") },
+                label = { Text(s.thenNagEvery) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 isError = repeatInterval.isNotEmpty() && (repeatIntervalValue ?: 0) < 1,
@@ -254,8 +275,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "Snooze options shown on tasks and reminders. Pick how far each pushes " +
-                    "the next nag. The one marked default is the reminder's one-tap Wait button.",
+                s.snoozeIntro,
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -269,7 +289,7 @@ fun SettingsScreen(
                     OutlinedTextField(
                         value = wait,
                         onValueChange = { waits[index] = it },
-                        label = { Text("Wait ${index + 1} (minutes)") },
+                        label = { Text(s.waitField(index + 1)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         isError = wait.isNotEmpty() && (waitValues[index] ?: 0) < 1,
@@ -288,7 +308,7 @@ fun SettingsScreen(
                         // At least one wait must survive, or there is nothing to snooze with.
                         enabled = waits.size > 1,
                     ) {
-                        Icon(Icons.Filled.Delete, contentDescription = "Remove wait ${index + 1}")
+                        Icon(Icons.Filled.Delete, contentDescription = s.removeWait(index + 1))
                     }
                 }
             }
@@ -297,15 +317,13 @@ fun SettingsScreen(
                 onClick = { waits.add("") },
                 enabled = waits.size < MAX_WAITS,
             ) {
-                Text("Add wait")
+                Text(s.addWait)
             }
 
             Spacer(Modifier.height(24.dp))
 
             Text(
-                "Reminders that come due together would stack up and hide each other, " +
-                    "so they are spread out instead. None are skipped — a reminder that " +
-                    "lands too soon just waits its turn. Use 0 to let them arrive together.",
+                s.gapIntro,
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -314,7 +332,7 @@ fun SettingsScreen(
             OutlinedTextField(
                 value = notificationGap,
                 onValueChange = { notificationGap = it },
-                label = { Text("Minimum seconds between notifications") },
+                label = { Text(s.minSecondsBetween) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
                 isError = notificationGap.isNotEmpty() && (notificationGapValue ?: -1) < 0,
@@ -336,13 +354,12 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Quiet hours", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(s.quietHours, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Switch(checked = quietHoursOn, onCheckedChange = { quietHoursOn = it })
             }
 
             Text(
-                "Reminders that come due inside these hours arrive when they end. " +
-                    "Nothing is skipped, and tasks keep the times they were given.",
+                s.quietHoursIntro,
                 style = MaterialTheme.typography.bodyMedium,
             )
 
@@ -360,7 +377,7 @@ fun SettingsScreen(
                         }) {
                             Text(formatTimeOfDay(range.startMinute, use24Hour))
                         }
-                        Text("to", style = MaterialTheme.typography.bodyMedium)
+                        Text(s.rangeTo, style = MaterialTheme.typography.bodyMedium)
                         TextButton(onClick = {
                             editingQuietIndex = index
                             editingQuietStart = false
@@ -371,7 +388,7 @@ fun SettingsScreen(
                         IconButton(onClick = { quietHours.removeAt(index) }) {
                             Icon(
                                 Icons.Filled.Delete,
-                                contentDescription = "Remove quiet hours ${index + 1}",
+                                contentDescription = s.removeQuietHours(index + 1),
                             )
                         }
                     }
@@ -381,12 +398,12 @@ fun SettingsScreen(
                     onClick = { quietHours.add(DEFAULT_QUIET_HOURS.first()) },
                     enabled = quietHours.size < MAX_QUIET_RANGES,
                 ) {
-                    Text("Add quiet hours")
+                    Text(s.addQuietHours)
                 }
 
                 if (quietHours.isEmpty()) {
                     Text(
-                        "Add a range, or switch quiet hours off.",
+                        s.addRangeOrSwitchOff,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -396,7 +413,7 @@ fun SettingsScreen(
             Spacer(Modifier.height(32.dp))
 
             Text(
-                "Signed in as ${session.email ?: "unknown"}",
+                s.signedInAs(session.email ?: s.unknown),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -406,12 +423,12 @@ fun SettingsScreen(
                 enabled = !viewModel.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Sign out")
+                Text(s.signOut)
             }
 
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { showAdvanced = !showAdvanced }) {
-                Text(if (showAdvanced) "Hide advanced" else "Advanced")
+                Text(if (showAdvanced) s.hideAdvanced else s.advanced)
             }
 
             if (showAdvanced) {
@@ -427,7 +444,7 @@ fun SettingsScreen(
                         normalizedServerUrl != session.baseUrl,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Change server URL")
+                    Text(s.changeServerUrl)
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -436,17 +453,18 @@ fun SettingsScreen(
                     enabled = !viewModel.busy,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Send test notification")
+                    Text(s.sendTestNotification)
                 }
 
                 Spacer(Modifier.height(16.dp))
                 val crashes = viewModel.crashLogSummary
                 Text(
                     when (crashes.count) {
-                        0 -> "No crashes recorded"
-                        else -> "${crashes.count} ${if (crashes.count == 1) "crash" else "crashes"} " +
-                            "recorded, latest " +
-                            (crashes.latest?.let { formatDateTime(it.toEpochMilli(), use24Hour) } ?: "unknown")
+                        0 -> s.noCrashes
+                        else -> s.crashesRecorded(
+                            crashes.count,
+                            crashes.latest?.let { formatDateTime(it.toEpochMilli(), use24Hour, s) } ?: s.unknown,
+                        )
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -460,13 +478,13 @@ fun SettingsScreen(
                                 putExtra(Intent.EXTRA_SUBJECT, "RelentlessBadger crash log")
                                 putExtra(Intent.EXTRA_TEXT, viewModel.crashLogText())
                             }
-                            context.startActivity(Intent.createChooser(send, "Share crash log"))
+                            context.startActivity(Intent.createChooser(send, s.shareCrashLog))
                         }
                     },
                     enabled = crashes.count > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Share crash log")
+                    Text(s.shareCrashLog)
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
@@ -474,7 +492,7 @@ fun SettingsScreen(
                     enabled = crashes.count > 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text("Clear crash log")
+                    Text(s.clearCrashLog)
                 }
             }
 
@@ -515,8 +533,8 @@ fun SettingsScreen(
     if (confirmClearCrashLog) {
         AlertDialog(
             onDismissRequest = { confirmClearCrashLog = false },
-            title = { Text("Clear crash log?") },
-            text = { Text("Recorded crashes are deleted from this device. Share them first if they're still needed.") },
+            title = { Text(s.clearCrashLogTitle) },
+            text = { Text(s.clearCrashLogBody) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -524,12 +542,12 @@ fun SettingsScreen(
                         viewModel.clearCrashLog()
                     },
                 ) {
-                    Text("Clear")
+                    Text(s.clear)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmClearCrashLog = false }) {
-                    Text("Cancel")
+                    Text(s.cancel)
                 }
             },
         )
@@ -538,13 +556,9 @@ fun SettingsScreen(
     if (confirmServerChange) {
         AlertDialog(
             onDismissRequest = { confirmServerChange = false },
-            title = { Text("Change server?") },
+            title = { Text(s.changeServerTitle) },
             text = {
-                Text(
-                    "Your current session may be rejected by the new server, and you " +
-                        "may need to sign in again. Your tasks stay on this device " +
-                        "and will sync to the new server.",
-                )
+                Text(s.changeServerBody)
             },
             confirmButton = {
                 TextButton(
@@ -553,14 +567,60 @@ fun SettingsScreen(
                         viewModel.changeServerUrl(serverUrl)
                     },
                 ) {
-                    Text("Change server")
+                    Text(s.changeServer)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { confirmServerChange = false }) {
-                    Text("Cancel")
+                    Text(s.cancel)
                 }
             },
         )
     }
+}
+
+/**
+ * The language picker. Each language is named in itself, so someone lost in the
+ * wrong one can still find theirs; "device default" also says which language
+ * the device currently resolves to.
+ */
+@Composable
+private fun LanguageSetting(current: LanguagePreference, onChosen: (LanguagePreference) -> Unit) {
+    val s = LocalStrings.current
+    var menuOpen by remember { mutableStateOf(false) }
+    fun label(option: LanguagePreference): String = when (option) {
+        LanguagePreference.System ->
+            s.languageDeviceDefault(languageName(resolveLanguage(option, deviceLanguageTag())))
+        LanguagePreference.English -> languageName(Language.English)
+        LanguagePreference.Portuguese -> languageName(Language.Portuguese)
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(s.languageLabel, style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+        Box {
+            TextButton(onClick = { menuOpen = true }) {
+                Text(label(current))
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                LanguagePreference.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(label(option)) },
+                        onClick = {
+                            menuOpen = false
+                            onChosen(option)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** A language's name in that language, the same whatever the UI speaks. */
+internal fun languageName(language: Language): String = when (language) {
+    Language.English -> "English"
+    Language.Portuguese -> "Português"
 }

@@ -23,6 +23,7 @@ interface GisButtonConfiguration {
   text?: 'signin_with' | 'signup_with' | 'continue_with' | 'signin';
   shape?: 'rectangular' | 'pill' | 'circle' | 'square';
   width?: number;
+  locale?: string;
 }
 
 interface GisIdApi {

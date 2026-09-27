@@ -3,6 +3,8 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { prefers24Hour } from '../../core/domain/format';
 import {
   buildRecurringReport,
@@ -30,12 +32,12 @@ import { ReportShare } from './report-share';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <mat-toolbar>
-      <span>{{ title }}</span>
+      <span>{{ title() }}</span>
       <span class="spacer"></span>
-      <button matIconButton [attr.aria-label]="'Share ' + title" (click)="share()">
+      <button matIconButton [attr.aria-label]="s().share(title())" (click)="share()">
         <mat-icon>share</mat-icon>
       </button>
-      <button matIconButton [attr.aria-label]="'Copy ' + title" (click)="copy()">
+      <button matIconButton [attr.aria-label]="s().copy(title())" (click)="copy()">
         <mat-icon>content_copy</mat-icon>
       </button>
     </mat-toolbar>
@@ -45,7 +47,7 @@ import { ReportShare } from './report-share';
         <ng-content />
 
         @if (report().sections.length === 0) {
-          <p class="empty">No recurring tasks.</p>
+          <p class="empty">{{ s().noRecurringTasks }}</p>
         } @else {
           @for (section of report().sections; track cadenceKey(section.cadence)) {
             <h2 class="section">{{ cadenceLabel(section.cadence) }}</h2>
@@ -54,7 +56,7 @@ import { ReportShare } from './report-share';
                 <mat-icon
                   class="kind"
                   [class.nagging]="item.nagging"
-                  [attr.aria-label]="item.nagging ? 'Nagging' : 'Repeats'"
+                  [attr.aria-label]="item.nagging ? s().nagging : s().repeats"
                 >
                   {{ item.nagging ? 'notifications_active' : 'repeat' }}
                 </mat-icon>
@@ -124,7 +126,8 @@ import { ReportShare } from './report-share';
   `,
 })
 export class RecurringView {
-  protected readonly title = 'Recurring';
+  protected readonly s = inject(I18n).strings;
+  protected readonly title = computed(() => this.s().reportRecurring);
 
   private readonly state = inject(AppState);
   private readonly reportShare = inject(ReportShare);
@@ -139,26 +142,26 @@ export class RecurringView {
   protected readonly cadenceKey = cadenceKey;
 
   protected cadenceLabel(cadence: RecurringCadence): string {
-    return cadenceLabel(cadence);
+    return cadenceLabel(cadence, this.s());
   }
 
   protected scheduleLabel(item: RecurringReportItem): string {
-    return recurringScheduleLabel(item, this.use24Hour);
+    return recurringScheduleLabel(item, this.use24Hour, this.s());
   }
 
   protected nextLabel(item: RecurringReportItem): string {
-    return recurringNextLabel(item, this.use24Hour);
+    return recurringNextLabel(item, this.use24Hour, this.s());
   }
 
   protected share(): Promise<void> {
     return this.reportShare.share(
-      renderRecurringReport(this.report(), this.title, this.use24Hour, 'markdown'),
+      renderRecurringReport(this.report(), this.title(), this.use24Hour, 'markdown', this.s()),
     );
   }
 
   protected copy(): Promise<void> {
     return this.reportShare.copy(
-      renderRecurringReport(this.report(), this.title, this.use24Hour, 'plain'),
+      renderRecurringReport(this.report(), this.title(), this.use24Hour, 'plain', this.s()),
     );
   }
 }

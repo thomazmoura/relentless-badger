@@ -1,3 +1,5 @@
+import { ENGLISH, Strings } from '../i18n/strings';
+
 /**
  * The two failure shapes the business logic branches on, mirroring what the
  * Android app catches: a connection that never reached the server, and a
@@ -23,18 +25,30 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A server URL TaskRepository.changeServer refused. Typed rather than carrying
+ * a sentence, so the UI can say why in whichever language it speaks.
+ */
+export class InvalidServerUrlError extends Error {
+  constructor(readonly blank: boolean) {
+    super(blank ? 'Enter the server URL first.' : "That doesn't look like a valid http(s) URL.");
+    this.name = 'InvalidServerUrlError';
+  }
+}
+
 /** The message shown to the user, matching AppViewModel.friendly(). */
-export function friendlyMessage(error: unknown): string {
+export function friendlyMessage(error: unknown, strings: Strings = ENGLISH): string {
   if (error instanceof NetworkError) {
-    return 'Cannot reach the server. Check the URL and your network.';
+    return strings.cannotReachServer;
   }
   if (error instanceof ApiError) {
-    return error.status === 401
-      ? 'Session rejected by the server. Try signing in again.'
-      : `Server error (${error.status}).`;
+    return error.status === 401 ? strings.sessionRejected : strings.serverError(error.status);
+  }
+  if (error instanceof InvalidServerUrlError) {
+    return error.blank ? strings.enterServerUrl : strings.invalidServerUrl;
   }
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return 'Something went wrong.';
+  return strings.somethingWentWrong;
 }

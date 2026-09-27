@@ -15,12 +15,16 @@ import com.relentlessbadger.app.AppContainer
 import com.relentlessbadger.app.BuildConfig
 import com.relentlessbadger.app.auth.GoogleSignIn
 import com.relentlessbadger.app.data.ConcludedTask
+import com.relentlessbadger.app.data.InvalidServerUrlException
+import com.relentlessbadger.app.data.LanguagePreference
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
+import com.relentlessbadger.app.data.deviceLanguageTag
+import com.relentlessbadger.app.data.resolveLanguage
 import com.relentlessbadger.app.db.CompletedTaskEntity
 import com.relentlessbadger.app.db.OpenTaskEntity
 import com.relentlessbadger.app.diagnostics.CrashLogSummary
@@ -44,6 +48,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     val session = container.session.sessionFlow
         .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /**
+     * The label table for the language in force. Resolved on every read rather
+     * than cached: with "device default" chosen, a device language switch has to
+     * show through, and this view model outlives the activity that notices it.
+     */
+    val strings: Strings
+        get() = Strings.of(resolveLanguage(session.value?.language ?: LanguagePreference.System, deviceLanguageTag()))
+
+    private val s: Strings get() = strings
 
     val openTasks: StateFlow<List<OpenTaskEntity>> = container.repository.openTasks()
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
@@ -161,7 +175,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     private fun signIn(baseUrl: String, idTokenProvider: suspend () -> String) {
         if (baseUrl.isBlank()) {
-            errorMessage = "Enter the server URL first."
+            errorMessage = s.enterServerUrl
             return
         }
         launchBusy {
@@ -184,7 +198,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 container.repository.sync()
             } catch (e: Exception) {
                 if (interactive || e !is java.io.IOException) {
-                    errorMessage = e.friendly()
+                    errorMessage = e.friendly(s)
                 }
             }
             titleHistory = container.repository.titles()
@@ -198,7 +212,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         val recurrence = quickAddRecurrence
         if (recurrence != null && firstWarningAtMillis == null) {
             // The UI routes through the date picker first; this is a backstop.
-            errorMessage = "Pick a start time for a repeating task."
+            errorMessage = s.pickStartForRepeating
             return
         }
         quickAddText = ""
@@ -316,8 +330,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     /**
      * Commits everything the Settings screen holds in one go, whether from its
-     * Apply button or from leaving the screen. Sound and stream stay on the
-     * device; the rest syncs.
+     * Apply button or from leaving the screen. Sound, stream and language stay
+     * on the device; the rest syncs.
      */
     fun saveSettings(
         initialDelayMinutes: Int,
@@ -328,6 +342,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         minNotificationGapSeconds: Int,
         notificationSound: NotificationSound,
         soundStream: SoundStream,
+        language: LanguagePreference,
         onDone: () -> Unit,
     ) {
         launchBusy {
@@ -341,6 +356,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             container.repository.updateNotificationGapSeconds(minNotificationGapSeconds)
             container.repository.updateNotificationSound(notificationSound)
             container.repository.updateSoundStream(soundStream)
+            container.repository.updateLanguage(language)
             onDone()
         }
     }
@@ -395,7 +411,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             try {
                 block()
             } catch (e: Exception) {
-                errorMessage = e.friendly()
+                errorMessage = e.friendly(s)
             } finally {
                 busy = false
             }
@@ -409,12 +425,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 }
 
-private fun Exception.friendly(): String = when (this) {
-    is java.net.ConnectException, is java.net.SocketTimeoutException ->
-        "Cannot reach the server. Check the URL and your network."
+private fun Exception.friendly(s: Strings): String = when (this) {
+    is java.net.ConnectException, is java.net.SocketTimeoutException -> s.cannotReachServer
     is retrofit2.HttpException -> when (code()) {
-        401 -> "Session rejected by the server. Try signing in again."
-        else -> "Server error (${code()})."
+        401 -> s.sessionRejected
+        else -> s.serverError(code())
     }
-    else -> message ?: "Something went wrong."
+    is InvalidServerUrlException -> if (blank) s.enterServerUrl else s.invalidServerUrl
+    else -> message ?: s.somethingWentWrong
 }

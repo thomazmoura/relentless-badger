@@ -4,6 +4,8 @@ import com.relentlessbadger.app.data.BadgerApi
 import com.relentlessbadger.app.data.CompleteTaskRequest
 import com.relentlessbadger.app.data.CreateTaskRequest
 import com.relentlessbadger.app.data.DEFAULT_NOTIFICATION_GAP_SECONDS
+import com.relentlessbadger.app.data.Language
+import com.relentlessbadger.app.data.LanguagePreference
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.LoginResponse
 import com.relentlessbadger.app.data.NotificationSound
@@ -249,11 +251,15 @@ class RecordingReminderScheduler : ReminderScheduler {
     /** The stream each test notification rang on. */
     val testNotificationStreams = mutableListOf<SoundStream>()
 
+    /** The language each test notification was worded in. */
+    val testNotificationLanguages = mutableListOf<Language>()
+
     data class ShownReminder(
         val task: OpenTaskEntity,
         val defaultWaitMinutes: Int,
         val sound: NotificationSound,
         val stream: SoundStream,
+        val language: Language,
     )
 
     override fun canScheduleExact(): Boolean = true
@@ -276,14 +282,21 @@ class RecordingReminderScheduler : ReminderScheduler {
         defaultWaitMinutes: Int,
         sound: NotificationSound,
         stream: SoundStream,
+        language: Language,
     ) {
-        shownReminders += ShownReminder(task, defaultWaitMinutes, sound, stream)
+        shownReminders += ShownReminder(task, defaultWaitMinutes, sound, stream, language)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream) {
+    override fun showTestNotification(
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        stream: SoundStream,
+        language: Language,
+    ) {
         testNotifications += defaultWaitMinutes
         testNotificationSounds += sound
         testNotificationStreams += stream
+        testNotificationLanguages += language
     }
 }
 
@@ -303,6 +316,7 @@ class FakeSettingsStore : SettingsStore {
     var lastNotificationAtMillis: Long? = null
     var notificationSound: NotificationSound = NotificationSound.SystemDefault
     var soundStream = SoundStream.Notification
+    var language = LanguagePreference.System
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -320,6 +334,7 @@ class FakeSettingsStore : SettingsStore {
         lastNotificationAtMillis = lastNotificationAtMillis,
         notificationSound = notificationSound,
         soundStream = soundStream,
+        language = language,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {
@@ -348,6 +363,10 @@ class FakeSettingsStore : SettingsStore {
 
     override suspend fun saveSoundStream(stream: SoundStream) {
         soundStream = stream
+    }
+
+    override suspend fun saveLanguage(language: LanguagePreference) {
+        this.language = language
     }
 
     override suspend fun markSettingsDirty() {

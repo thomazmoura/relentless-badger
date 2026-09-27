@@ -22,6 +22,14 @@ import { Router } from '@angular/router';
 import { AppState } from '../../core/app-state';
 import { CRASH_LOG } from '../../core/diagnostics/crash-log';
 import { formatDateTime, prefers24Hour } from '../../core/domain/format';
+import {
+  deviceLanguageTag,
+  LANGUAGE_PREFERENCES,
+  LanguagePreference,
+  languageName,
+  parseLanguagePreference,
+  resolveLanguage,
+} from '../../core/domain/language';
 import { MAX_WAITS, SettingsDto } from '../../core/domain/models';
 import {
   BUILT_IN_SOUNDS,
@@ -29,6 +37,7 @@ import {
   parseNotificationSound,
   toStorageString,
 } from '../../core/domain/notification-sound';
+import { I18n } from '../../core/i18n/i18n.service';
 import { AudioElementSoundPlayer } from '../../core/notify/sound-player';
 import { ConfirmDialog } from '../dialogs/confirm-dialog';
 
@@ -54,20 +63,27 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <mat-toolbar>
-      <button matIconButton aria-label="Back" (click)="back()">
+      <button matIconButton [attr.aria-label]="s().back" (click)="back()">
         <mat-icon>arrow_back</mat-icon>
       </button>
-      <span>Settings</span>
+      <span>{{ s().settings }}</span>
     </mat-toolbar>
 
     <div class="body">
       <div class="page-body">
-        <p class="hint">
-          Defaults applied to every new task. Existing tasks keep the values they were created with.
-        </p>
+        <mat-form-field appearance="outline">
+          <mat-label>{{ s().languageLabel }}</mat-label>
+          <mat-select [value]="draftLanguage()" (selectionChange)="draftLanguage.set($event.value)">
+            @for (option of languageOptions; track option) {
+              <mat-option [value]="option">{{ languageOptionLabel(option) }}</mat-option>
+            }
+          </mat-select>
+        </mat-form-field>
+
+        <p class="hint">{{ s().defaultsIntro }}</p>
 
         <mat-form-field appearance="outline">
-          <mat-label>First reminder after (minutes)</mat-label>
+          <mat-label>{{ s().firstReminderAfter }}</mat-label>
           <input
             matInput
             type="number"
@@ -78,7 +94,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
         </mat-form-field>
 
         <mat-form-field appearance="outline">
-          <mat-label>Then nag every (minutes)</mat-label>
+          <mat-label>{{ s().thenNagEvery }}</mat-label>
           <input
             matInput
             type="number"
@@ -88,15 +104,12 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           />
         </mat-form-field>
 
-        <p class="hint">
-          Snooze options shown on tasks and reminders. Pick how far each pushes the next nag. The
-          one marked default is the reminder's one-tap Wait button.
-        </p>
+        <p class="hint">{{ s().snoozeIntro }}</p>
 
         @for (wait of waits(); track $index) {
           <div class="wait">
             <mat-form-field appearance="outline" class="grow">
-              <mat-label>Wait {{ $index + 1 }} (minutes)</mat-label>
+              <mat-label>{{ s().waitField($index + 1) }}</mat-label>
               <input
                 matInput
                 type="number"
@@ -108,11 +121,11 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
             <mat-radio-button
               [checked]="defaultWaitIndex() === $index"
               (change)="defaultWaitIndex.set($index)"
-              [attr.aria-label]="'Use wait ' + ($index + 1) + ' as the default'"
+              [attr.aria-label]="s().useWaitAsDefault($index + 1)"
             />
             <button
               matIconButton
-              [attr.aria-label]="'Remove wait ' + ($index + 1)"
+              [attr.aria-label]="s().removeWait($index + 1)"
               [disabled]="waits().length <= 1"
               (click)="removeWait($index)"
             >
@@ -122,30 +135,32 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
         }
 
         <button matButton [disabled]="waits().length >= maxWaits" (click)="addWait()">
-          Add wait
+          {{ s().addWait }}
         </button>
 
         <div class="sound">
           <mat-form-field appearance="outline" class="grow">
-            <mat-label>Notification sound</mat-label>
+            <mat-label>{{ s().notificationSound }}</mat-label>
             <mat-select
               [value]="draftSound()"
               (selectionChange)="chooseSound($event.source, $event.value)"
             >
-              <mat-option value="silent">Silent</mat-option>
-              <mat-option value="system">System default</mat-option>
+              <mat-option value="silent">{{ s().soundSilent }}</mat-option>
+              <mat-option value="system">{{ s().soundSystemDefault }}</mat-option>
               @for (sound of builtInSounds; track sound.key) {
-                <mat-option [value]="'builtin:' + sound.key">{{ sound.label }}</mat-option>
+                <mat-option [value]="'builtin:' + sound.key">{{
+                  s().builtInSoundName(sound.key)
+                }}</mat-option>
               }
               @if (sound().kind === 'custom') {
                 <mat-option [value]="draftSound()">{{ soundLabel() }}</mat-option>
               }
-              <mat-option value="upload">Upload your own…</mat-option>
+              <mat-option value="upload">{{ s().uploadSound }}</mat-option>
             </mat-select>
           </mat-form-field>
           <button
             matIconButton
-            aria-label="Play notification sound"
+            [attr.aria-label]="s().playNotificationSound"
             [disabled]="soundSource() === null"
             (click)="previewSound()"
           >
@@ -153,20 +168,20 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
           </button>
         </div>
         <input #soundFile type="file" accept="audio/*" hidden (change)="uploadSound($event)" />
-        <p class="hint sound-credit">Built-in sounds: Google Material, CC-BY 4.0</p>
+        <p class="hint sound-credit">{{ s().builtInSoundsCredit }}</p>
 
-        <p class="signed-in">Signed in as {{ state.session().email ?? 'unknown' }}</p>
-        <button matButton="outlined" class="full" (click)="signOut()">Sign out</button>
+        <p class="signed-in">{{ s().signedInAs(state.session().email ?? s().unknown) }}</p>
+        <button matButton="outlined" class="full" (click)="signOut()">{{ s().signOut }}</button>
 
         <button matButton (click)="showAdvanced.set(!showAdvanced())">
-          {{ showAdvanced() ? 'Hide advanced' : 'Advanced' }}
+          {{ showAdvanced() ? s().hideAdvanced : s().advanced }}
         </button>
 
         @if (showAdvanced()) {
           <mat-form-field appearance="outline">
-            <mat-label>Server URL</mat-label>
+            <mat-label>{{ s().serverUrl }}</mat-label>
             <input matInput [ngModel]="serverUrl()" (ngModelChange)="serverUrl.set($event)" />
-            <mat-hint>The machine running the API</mat-hint>
+            <mat-hint>{{ s().serverUrlHintShort }}</mat-hint>
           </mat-form-field>
           <button
             matButton="outlined"
@@ -178,7 +193,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
             "
             (click)="changeServer()"
           >
-            Change server URL
+            {{ s().changeServerUrl }}
           </button>
           <button
             matButton="outlined"
@@ -186,7 +201,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
             [disabled]="state.busy()"
             (click)="state.showTestNotification()"
           >
-            Send test notification
+            {{ s().sendTestNotification }}
           </button>
 
           <p class="hint">{{ crashSummaryText() }}</p>
@@ -196,7 +211,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
             [disabled]="crashSummary().count === 0"
             (click)="shareCrashLog()"
           >
-            Share crash log
+            {{ s().shareCrashLog }}
           </button>
           <button
             matButton="outlined"
@@ -204,7 +219,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
             [disabled]="crashSummary().count === 0"
             (click)="clearCrashLog()"
           >
-            Clear crash log
+            {{ s().clearCrashLog }}
           </button>
         }
       </div>
@@ -214,11 +229,11 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
       <div class="fabs">
         <button matFab extended class="undo" (click)="undo()">
           <mat-icon>undo</mat-icon>
-          Undo
+          {{ s().undo }}
         </button>
         <button matFab extended [disabled]="!valid() || state.busy()" (click)="apply()">
           <mat-icon>check</mat-icon>
-          Apply
+          {{ s().applyAction }}
         </button>
       </div>
     }
@@ -289,6 +304,7 @@ import { ConfirmDialog } from '../dialogs/confirm-dialog';
 })
 export class SettingsPage {
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   private readonly router = inject(Router);
   private readonly location = inject(Location);
   private readonly dialog = inject(MatDialog);
@@ -302,6 +318,10 @@ export class SettingsPage {
 
   private readonly session = this.state.session();
   readonly draftSound = signal(this.session.notificationSound);
+  readonly draftLanguage = signal<LanguagePreference>(
+    parseLanguagePreference(this.session.language),
+  );
+  readonly languageOptions = LANGUAGE_PREFERENCES;
   readonly sound = computed(() => parseNotificationSound(this.draftSound()));
   readonly soundLabel = computed(() => {
     const sound = this.sound();
@@ -319,10 +339,13 @@ export class SettingsPage {
   readonly crashSummary = signal(this.crashLog.summary());
   readonly crashSummaryText = computed(() => {
     const { count, latestMillis } = this.crashSummary();
-    if (count === 0) return 'No crashes recorded';
+    const s = this.s();
+    if (count === 0) return s.noCrashes;
     const latest =
-      latestMillis === null ? 'unknown' : formatDateTime(latestMillis, prefers24Hour());
-    return `${count} ${count === 1 ? 'crash' : 'crashes'} recorded, latest ${latest}`;
+      latestMillis === null
+        ? s.unknown
+        : formatDateTime(latestMillis, prefers24Hour(), undefined, s);
+    return s.crashesRecorded(count, latest);
   });
 
   readonly normalizedServerUrl = computed(() => this.serverUrl().trim().replace(/\/+$/, ''));
@@ -338,7 +361,8 @@ export class SettingsPage {
       waits.length !== stored.waitMinutes.length ||
       waits.some((wait, i) => wait !== stored.waitMinutes[i]) ||
       this.defaultWaitIndex() !== stored.defaultWaitIndex ||
-      this.draftSound() !== stored.notificationSound
+      this.draftSound() !== stored.notificationSound ||
+      this.draftLanguage() !== parseLanguagePreference(stored.language)
     );
   });
 
@@ -357,6 +381,18 @@ export class SettingsPage {
     );
   });
 
+  /**
+   * Each language is named in itself, so someone lost in the wrong one can
+   * still find theirs; "device default" also says which language the browser
+   * currently resolves to.
+   */
+  languageOptionLabel(option: LanguagePreference): string {
+    if (option !== 'system') return languageName(option);
+    return this.s().languageDeviceDefault(
+      languageName(resolveLanguage('system', deviceLanguageTag())),
+    );
+  }
+
   /** Hearing a sound is how you pick one, so choosing it also plays it. */
   async chooseSound(select: MatSelect, value: string): Promise<void> {
     if (value === 'upload') {
@@ -374,7 +410,7 @@ export class SettingsPage {
     const source = this.soundSource();
     if (source === null) return;
     this.soundPlayer.play(source).catch(() => {
-      this.snackBar.open('This browser could not play that sound', undefined, { duration: 4000 });
+      this.snackBar.open(this.s().couldNotPlaySound, undefined, { duration: 4000 });
     });
   }
 
@@ -388,14 +424,14 @@ export class SettingsPage {
     input.value = ''; // so picking the same file again still fires change
     if (!file) return;
     if (file.size > MAX_SOUND_BYTES) {
-      this.snackBar.open('That sound is too big \u2014 pick one under 500 KB', undefined, {
+      this.snackBar.open(this.s().soundTooBig, undefined, {
         duration: 4000,
       });
       return;
     }
     const uri = await readAsDataUrl(file);
     if (uri === null || !(await isPlayable(uri))) {
-      this.snackBar.open('That file is not a sound this browser can play', undefined, {
+      this.snackBar.open(this.s().notASound, undefined, {
         duration: 4000,
       });
       return;
@@ -427,6 +463,7 @@ export class SettingsPage {
     this.waits.set(stored.waitMinutes.map(String));
     this.defaultWaitIndex.set(stored.defaultWaitIndex);
     this.draftSound.set(stored.notificationSound);
+    this.draftLanguage.set(parseLanguagePreference(stored.language));
   }
 
   async apply(): Promise<boolean> {
@@ -440,7 +477,11 @@ export class SettingsPage {
       // wipe quiet hours set on the phone.
       quietHours: this.state.session().quietHours,
     };
-    return this.state.saveSettings(settings, parseNotificationSound(this.draftSound()));
+    return this.state.saveSettings(
+      settings,
+      parseNotificationSound(this.draftSound()),
+      this.draftLanguage(),
+    );
   }
 
   /**
@@ -451,7 +492,7 @@ export class SettingsPage {
   async leave(): Promise<boolean> {
     if (this.leaving || !this.changed()) return true;
     if (!this.valid()) {
-      this.snackBar.open('Fix the highlighted values, or Undo them', undefined, {
+      this.snackBar.open(this.s().fixHighlightedOrUndo, undefined, {
         duration: 4000,
       });
       return false;
@@ -463,10 +504,9 @@ export class SettingsPage {
     const confirmed = await this.dialog
       .open(ConfirmDialog, {
         data: {
-          title: 'Change server?',
-          message:
-            'Your current session may be rejected by the new server, and you may need to sign in again. Your tasks stay on this device and will sync to the new server.',
-          confirmLabel: 'Change server',
+          title: this.s().changeServerTitle,
+          message: this.s().changeServerBody,
+          confirmLabel: this.s().changeServer,
         },
       })
       .afterClosed()
@@ -498,10 +538,9 @@ export class SettingsPage {
     const confirmed = await this.dialog
       .open(ConfirmDialog, {
         data: {
-          title: 'Clear crash log?',
-          message:
-            "Recorded crashes are deleted from this device. Share them first if they're still needed.",
-          confirmLabel: 'Clear',
+          title: this.s().clearCrashLogTitle,
+          message: this.s().clearCrashLogBody,
+          confirmLabel: this.s().clear,
         },
       })
       .afterClosed()

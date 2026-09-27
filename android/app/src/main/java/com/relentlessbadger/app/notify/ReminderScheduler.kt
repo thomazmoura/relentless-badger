@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.relentlessbadger.app.data.Language
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.db.OpenTaskEntity
@@ -32,12 +33,18 @@ interface ReminderScheduler {
 
     /**
      * [defaultWaitMinutes] backs the notification's one-tap Wait button; [sound]
-     * is what it rings with, on [stream].
+     * is what it rings with, on [stream]; [language] is what it reads in.
      */
-    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream)
+    fun showReminder(
+        task: OpenTaskEntity,
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        stream: SoundStream,
+        language: Language,
+    )
 
     /** Posts the reminder-shaped notification behind the Advanced settings button. */
-    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream)
+    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream, language: Language)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -71,12 +78,18 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
         defaultWaitMinutes: Int,
         sound: NotificationSound,
         stream: SoundStream,
+        language: Language,
     ) {
-        Notifications.showReminder(context, task, defaultWaitMinutes, sound, stream)
+        Notifications.showReminder(context, task, defaultWaitMinutes, sound, stream, language)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream) {
-        Notifications.showTestNotification(context, defaultWaitMinutes, sound, stream)
+    override fun showTestNotification(
+        defaultWaitMinutes: Int,
+        sound: NotificationSound,
+        stream: SoundStream,
+        language: Language,
+    ) {
+        Notifications.showTestNotification(context, defaultWaitMinutes, sound, stream, language)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

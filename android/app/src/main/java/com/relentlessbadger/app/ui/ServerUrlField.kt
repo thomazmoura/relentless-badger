@@ -12,11 +12,12 @@ fun ServerUrlField(
     onValueChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val s = LocalStrings.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text("Server URL") },
-        supportingText = { Text("The machine on your network running the API") },
+        label = { Text(s.serverUrl) },
+        supportingText = { Text(s.serverUrlHint) },
         singleLine = true,
         modifier = modifier,
     )

@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MAT_DIALOG_DATA, MatDialogModule } from '@angular/material/dialog';
+import { I18n } from '../../core/i18n/i18n.service';
 
 export interface ConfirmData {
   readonly title: string;
@@ -16,11 +17,12 @@ export interface ConfirmData {
     <h2 mat-dialog-title>{{ data.title }}</h2>
     <mat-dialog-content>{{ data.message }}</mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button matButton [mat-dialog-close]="false">Cancel</button>
+      <button matButton [mat-dialog-close]="false">{{ s().cancel }}</button>
       <button matButton="filled" [mat-dialog-close]="true">{{ data.confirmLabel }}</button>
     </mat-dialog-actions>
   `,
 })
 export class ConfirmDialog {
+  readonly s = inject(I18n).strings;
   readonly data = inject<ConfirmData>(MAT_DIALOG_DATA);
 }

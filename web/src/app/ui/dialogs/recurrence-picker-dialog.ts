@@ -7,6 +7,7 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { defaultWeekdayBit, shortWeekdayNames } from '../../core/domain/format';
 import { Recurrence, RecurUnit } from '../../core/domain/models';
+import { I18n } from '../../core/i18n/i18n.service';
 
 export interface RecurrencePickerData {
   readonly initial: Recurrence | null;
@@ -31,21 +32,23 @@ export interface RecurrencePickerData {
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h2 mat-dialog-title>Repeat</h2>
+    <h2 mat-dialog-title>{{ s().repeatTitle }}</h2>
     <mat-dialog-content>
       <mat-chip-listbox
         [value]="unit()"
         (change)="pickUnit($any($event).value)"
         hideSingleSelectionIndicator
       >
-        <mat-chip-option [value]="null">None</mat-chip-option>
-        <mat-chip-option value="days">Daily</mat-chip-option>
-        <mat-chip-option value="weeks">Weekly</mat-chip-option>
+        <mat-chip-option [value]="null">{{ s().repeatNone }}</mat-chip-option>
+        <mat-chip-option value="days">{{ s().repeatDaily }}</mat-chip-option>
+        <mat-chip-option value="weeks">{{ s().repeatWeekly }}</mat-chip-option>
       </mat-chip-listbox>
 
       @if (unit(); as chosen) {
         <mat-form-field appearance="outline" class="every">
-          <mat-label>{{ chosen === 'days' ? 'Every N days' : 'Every N weeks' }}</mat-label>
+          <mat-label>{{
+            chosen === 'days' ? s().everyNDaysField : s().everyNWeeksField
+          }}</mat-label>
           <input
             matInput
             type="number"
@@ -54,7 +57,7 @@ export interface RecurrencePickerData {
             (ngModelChange)="everyNText.set($event)"
           />
           @if (!everyNValid()) {
-            <mat-error>At least 1.</mat-error>
+            <mat-error>{{ s().atLeastOne }}</mat-error>
           }
         </mat-form-field>
       }
@@ -77,8 +80,10 @@ export interface RecurrencePickerData {
       }
     </mat-dialog-content>
     <mat-dialog-actions align="end">
-      <button matButton mat-dialog-close>Cancel</button>
-      <button matButton="filled" [disabled]="!canConfirm()" (click)="confirm()">Set</button>
+      <button matButton mat-dialog-close>{{ s().cancel }}</button>
+      <button matButton="filled" [disabled]="!canConfirm()" (click)="confirm()">
+        {{ s().setAction }}
+      </button>
     </mat-dialog-actions>
   `,
   styles: `
@@ -106,7 +111,8 @@ export class RecurrencePickerDialog {
   private readonly data = inject<RecurrencePickerData>(MAT_DIALOG_DATA);
   private readonly dialogRef = inject(MatDialogRef<RecurrencePickerDialog, Recurrence | null>);
 
-  readonly weekdays = shortWeekdayNames();
+  readonly s = inject(I18n).strings;
+  readonly weekdays = shortWeekdayNames('short', this.s());
   readonly unit = signal<RecurUnit | null>(this.data.initial?.unit ?? null);
   readonly everyNText = signal(String(this.data.initial?.everyN ?? 1));
   readonly daysOfWeek = signal(this.data.initial?.daysOfWeek ?? 0);

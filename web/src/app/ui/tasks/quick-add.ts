@@ -7,6 +7,8 @@ import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { AppState } from '../../core/app-state';
+import { I18n } from '../../core/i18n/i18n.service';
+
 import { formatDateTime, prefers24Hour, recurrenceLabel } from '../../core/domain/format';
 import { DateTimePickerDialog } from '../dialogs/date-time-picker-dialog';
 import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
@@ -32,7 +34,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
       <button
         matIconButton
         matPrefix
-        aria-label="Set first reminder time"
+        [attr.aria-label]="s().setFirstReminderTime"
         [class.active]="state.quickAddFirstWarningAtMillis() !== null"
         (click)="pickFirstWarning()"
       >
@@ -42,7 +44,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
            signal, and the field has to follow it back to empty. -->
       <input
         matInput
-        placeholder="What needs doing right away?"
+        [placeholder]="s().quickAddPlaceholder"
         [value]="state.quickAddText()"
         (input)="state.quickAddText.set($any($event.target).value)"
         (keydown.enter)="addOrPickTime(state.quickAddText())"
@@ -50,7 +52,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
       <span matSuffix class="actions">
         <button
           matIconButton
-          aria-label="Set recurrence"
+          [attr.aria-label]="s().setRecurrence"
           [class.active]="state.quickAddRecurrence() !== null"
           (click)="pickRecurrence()"
         >
@@ -58,7 +60,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
         </button>
         <button
           matIconButton
-          aria-label="Add task"
+          [attr.aria-label]="s().addTask"
           [disabled]="state.quickAddText().trim() === '' || state.busy()"
           (click)="addOrPickTime(state.quickAddText())"
         >
@@ -72,10 +74,10 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
         @if (state.quickAddFirstWarningAtMillis(); as at) {
           <mat-chip (click)="pickFirstWarning()">
             <mat-icon matChipAvatar>schedule</mat-icon>
-            First nag {{ formatDateTime(at, use24Hour) }}
+            {{ s().firstNag(formatDateTime(at, use24Hour, undefined, s())) }}
             <button
               matChipRemove
-              aria-label="Clear first reminder time"
+              [attr.aria-label]="s().clearFirstReminderTime"
               (click)="clearFirstWarning($event)"
             >
               <mat-icon>cancel</mat-icon>
@@ -85,8 +87,12 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
         @if (state.quickAddRecurrence(); as rule) {
           <mat-chip (click)="pickRecurrence()">
             <mat-icon matChipAvatar>repeat</mat-icon>
-            {{ recurrenceLabel(rule) }}
-            <button matChipRemove aria-label="Clear recurrence" (click)="clearRecurrence($event)">
+            {{ recurrenceLabel(rule, s()) }}
+            <button
+              matChipRemove
+              [attr.aria-label]="s().clearRecurrence"
+              (click)="clearRecurrence($event)"
+            >
               <mat-icon>cancel</mat-icon>
             </button>
           </mat-chip>
@@ -102,7 +108,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
             <span class="label" (click)="addOrPickTime(suggestion)">{{ suggestion }}</span>
             <button
               matIconButton
-              [attr.aria-label]="'Remove &quot;' + suggestion + '&quot; from suggestions'"
+              [attr.aria-label]="s().removeSuggestion(suggestion)"
               (click)="state.dismissSuggestion(suggestion)"
             >
               <mat-icon>close</mat-icon>
@@ -153,6 +159,7 @@ import { RecurrencePickerDialog } from '../dialogs/recurrence-picker-dialog';
 })
 export class QuickAdd {
   readonly state = inject(AppState);
+  readonly s = inject(I18n).strings;
   private readonly dialog = inject(MatDialog);
 
   readonly use24Hour = prefers24Hour();
@@ -175,7 +182,10 @@ export class QuickAdd {
   async pickFirstWarning(): Promise<void> {
     const picked = await this.dialog
       .open(DateTimePickerDialog, {
-        data: { title: 'First reminder', initialMillis: this.state.quickAddFirstWarningAtMillis() },
+        data: {
+          title: this.s().firstReminder,
+          initialMillis: this.state.quickAddFirstWarningAtMillis(),
+        },
       })
       .afterClosed()
       .toPromise();

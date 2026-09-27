@@ -22,10 +22,10 @@ export class GoogleAuthService {
   }
 
   /**
-   * Renders Google's button into [target] and resolves with the ID token once
-   * the user picks an account.
+   * Renders Google's button into [target], worded in [locale], and resolves
+   * with the ID token once the user picks an account.
    */
-  async renderButton(target: HTMLElement): Promise<string> {
+  async renderButton(target: HTMLElement, locale: string): Promise<string> {
     await this.load();
     const google = window.google;
     if (!google) {
@@ -40,7 +40,12 @@ export class GoogleAuthService {
       use_fedcm_for_prompt: true,
       callback: (response) => this.pendingResolve?.(response.credential),
     });
-    google.accounts.id.renderButton(target, { theme: 'outline', size: 'large', width: 280 });
+    google.accounts.id.renderButton(target, {
+      theme: 'outline',
+      size: 'large',
+      width: 280,
+      locale,
+    });
     return token;
   }
 

@@ -12,9 +12,11 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.relentlessbadger.app.MainActivity
 import com.relentlessbadger.app.R
+import com.relentlessbadger.app.data.Language
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.db.OpenTaskEntity
+import com.relentlessbadger.app.ui.Strings
 import com.relentlessbadger.app.ui.formatDuration
 
 object Notifications {
@@ -130,8 +132,10 @@ object Notifications {
         defaultWaitMinutes: Int,
         sound: NotificationSound,
         stream: SoundStream,
+        language: Language,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        val s = Strings.of(language)
 
         val openApp = PendingIntent.getActivity(
             context,
@@ -157,19 +161,13 @@ object Notifications {
 
         val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, stream))
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.app_name))
-            .setContentText(task.title)
+            // One line, "Badger: water plants": on a watch or a crowded
+            // shade the title is often all that shows, so the task goes in it.
+            .setContentTitle(s.notificationTitle(task.title))
             .setContentIntent(openApp)
-            .addAction(
-                0,
-                context.getString(
-                    R.string.notification_action_wait,
-                    formatDuration(defaultWaitMinutes),
-                ),
-                waitIntent,
-            )
-            .addAction(0, context.getString(R.string.notification_action_other), otherIntent)
-            .addAction(0, context.getString(R.string.notification_action_done), doneIntent)
+            .addAction(0, s.waitFor(formatDuration(defaultWaitMinutes, s)), waitIntent)
+            .addAction(0, s.notificationOther, otherIntent)
+            .addAction(0, s.notificationDone, doneIntent)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .build()
@@ -191,8 +189,10 @@ object Notifications {
         defaultWaitMinutes: Int,
         sound: NotificationSound,
         stream: SoundStream,
+        language: Language,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
+        val s = Strings.of(language)
 
         val dismiss = PendingIntent.getBroadcast(
             context,
@@ -203,20 +203,12 @@ object Notifications {
 
         val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, stream))
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(context.getString(R.string.app_name))
-            .setContentText("Test notification \u2014 reminders are working")
+            .setContentTitle(s.notificationTitle(s.testNotificationText))
             .setContentIntent(dismiss)
             .setAutoCancel(true)
-            .addAction(
-                0,
-                context.getString(
-                    R.string.notification_action_wait,
-                    formatDuration(defaultWaitMinutes),
-                ),
-                dismiss,
-            )
-            .addAction(0, context.getString(R.string.notification_action_other), dismiss)
-            .addAction(0, context.getString(R.string.notification_action_done), dismiss)
+            .addAction(0, s.waitFor(formatDuration(defaultWaitMinutes, s)), dismiss)
+            .addAction(0, s.notificationOther, dismiss)
+            .addAction(0, s.notificationDone, dismiss)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             .build()

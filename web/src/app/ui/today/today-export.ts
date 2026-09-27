@@ -6,22 +6,23 @@ import {
   OverviewSectionKind,
 } from '../../core/domain/daily-overview';
 import { formatDateTime, formatTimeOfDay } from '../../core/domain/format';
+import { ENGLISH, Strings } from '../../core/i18n/strings';
 
 export type OverviewTextStyle = 'markdown' | 'plain';
 
 /** Angular templates read these too; these are the five a day can carry. */
-export function sectionLabel(kind: OverviewSectionKind): string {
+export function sectionLabel(kind: OverviewSectionKind, strings: Strings = ENGLISH): string {
   switch (kind) {
     case 'now':
-      return 'Now';
+      return strings.sectionNow;
     case 'later':
-      return 'Later today';
+      return strings.sectionLater;
     case 'scheduled':
-      return 'Scheduled';
+      return strings.sectionScheduled;
     case 'overdue':
-      return 'Overdue';
+      return strings.sectionOverdue;
     case 'done':
-      return 'Done';
+      return strings.sectionDone;
   }
 }
 
@@ -35,21 +36,22 @@ export function renderDailyOverview(
   title: string,
   use24Hour: boolean,
   style: OverviewTextStyle,
+  strings: Strings = ENGLISH,
 ): string {
   const bold = style === 'markdown' ? '*' : '';
   const italic = style === 'markdown' ? '_' : '';
-  const lines = [`${bold}RelentlessBadger — ${title}${bold}`];
+  const lines = [`${bold}${strings.reportBrand} — ${title}${bold}`];
 
   if (isOverviewEmpty(overview)) {
-    lines.push('', 'Nothing on this day.');
+    lines.push('', strings.nothingOnThisDay);
     return lines.join('\n');
   }
 
   for (const section of overview.sections) {
-    lines.push('', `${bold}${sectionLabel(section.kind)}${bold}`);
+    lines.push('', `${bold}${sectionLabel(section.kind, strings)}${bold}`);
     for (const item of section.items) {
       lines.push(
-        `• ${item.title} ${italic}(${overviewTimeLabel(item, section.kind, use24Hour)})${italic}`,
+        `• ${item.title} ${italic}(${overviewTimeLabel(item, section.kind, use24Hour, strings)})${italic}`,
       );
     }
   }
@@ -67,17 +69,18 @@ export function overviewTimeLabel(
   item: DailyOverviewItem,
   kind: OverviewSectionKind,
   use24Hour: boolean,
+  strings: Strings = ENGLISH,
 ): string {
   const when = item.fromEarlierDay
-    ? formatDateTime(item.atMillis, use24Hour)
+    ? formatDateTime(item.atMillis, use24Hour, undefined, strings)
     : formatTimeOfDay(item.atMillis, use24Hour);
   switch (kind) {
     case 'now':
-      return `since ${when}`;
+      return strings.since(when);
     case 'overdue':
-      return `was due ${when}`;
+      return strings.wasDue(when);
     case 'done':
-      return `done ${when}`;
+      return strings.doneAt(when);
     default:
       return when;
   }

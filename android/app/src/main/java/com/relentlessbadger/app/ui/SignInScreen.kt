@@ -28,6 +28,7 @@ import com.relentlessbadger.app.BuildConfig
 @Composable
 fun SignInScreen(viewModel: AppViewModel) {
     val context = LocalContext.current
+    val s = LocalStrings.current
     var baseUrl by rememberSaveable { mutableStateOf(BuildConfig.API_BASE_URL) }
     // With a build-time URL the field is tucked behind "Advanced"; without one
     // the user has to enter it, so it starts visible.
@@ -40,9 +41,9 @@ fun SignInScreen(viewModel: AppViewModel) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Text("Relentless Badger", style = MaterialTheme.typography.headlineMedium)
+        Text(s.appName, style = MaterialTheme.typography.headlineMedium)
         Text(
-            "The to-do list that won't shut up until you do the thing.",
+            s.tagline,
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.Center,
             modifier = Modifier.padding(top = 8.dp),
@@ -64,13 +65,12 @@ fun SignInScreen(viewModel: AppViewModel) {
             enabled = !viewModel.busy && !viewModel.devLoginAvailable,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text("Continue with Google")
+            Text(s.continueWithGoogle)
         }
 
         if (viewModel.devLoginAvailable) {
             Text(
-                "Google Sign-In is not configured in this build " +
-                    "(BADGER_GOOGLE_WEB_CLIENT_ID is empty).",
+                s.googleNotConfigured,
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(top = 8.dp),
@@ -81,14 +81,14 @@ fun SignInScreen(viewModel: AppViewModel) {
                 enabled = !viewModel.busy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("Dev sign-in (server dev bypass)")
+                Text(s.devSignIn)
             }
         }
 
         if (BuildConfig.API_BASE_URL.isNotBlank()) {
             Spacer(Modifier.height(8.dp))
             TextButton(onClick = { showAdvanced = !showAdvanced }) {
-                Text(if (showAdvanced) "Hide advanced" else "Advanced")
+                Text(if (showAdvanced) s.hideAdvanced else s.advanced)
             }
         }
 

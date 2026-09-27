@@ -4,6 +4,7 @@ import { MemoryStorageDriver } from '../data/storage';
 import { CompletedTaskStore, OpenTaskStore, TitleStore } from '../data/task-store';
 import { TaskRepository } from '../data/task-repository';
 import { CompletedTask, ConcludedTask, OpenTask, Recurrence, SettingsDto } from '../domain/models';
+import { LanguagePreference } from '../domain/language';
 import { NotificationSound } from '../domain/notification-sound';
 import {
   FakeBadgerApi,
@@ -31,6 +32,9 @@ export class BadgerScenario {
   readonly settingsStore = new FakeSettingsStore();
   readonly syncRequests = new RecordingSyncScheduler();
 
+  /** What the browser's language is set to; English unless a scenario says otherwise. */
+  deviceLanguageTag = 'en-US';
+
   private readonly store = new BadgerStore(new MemoryStorageDriver());
 
   readonly taskDao = new OpenTaskStore(this.store);
@@ -46,6 +50,7 @@ export class BadgerScenario {
     this.settingsStore,
     this.syncRequests,
     this.clock,
+    () => this.deviceLanguageTag,
   );
 
   // --- Given ---
@@ -92,6 +97,18 @@ export class BadgerScenario {
 
   whenNotificationSoundChosen(sound: NotificationSound): Promise<void> {
     return this.repository.updateNotificationSound(sound);
+  }
+
+  givenDeviceLanguage(tag: string): void {
+    this.deviceLanguageTag = tag;
+  }
+
+  givenLanguage(language: LanguagePreference): Promise<void> {
+    return this.repository.updateLanguage(language);
+  }
+
+  whenLanguageChosen(language: LanguagePreference): Promise<void> {
+    return this.repository.updateLanguage(language);
   }
 
   /** A task known to both sides with no pending local changes. */
