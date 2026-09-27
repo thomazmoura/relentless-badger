@@ -21,7 +21,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Checklist
-import androidx.compose.material.icons.filled.Today
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +47,7 @@ import com.relentlessbadger.app.ui.AppViewModel
 import com.relentlessbadger.app.ui.CalendarScreen
 import com.relentlessbadger.app.ui.DailyOverviewScreen
 import com.relentlessbadger.app.ui.MainScreen
+import com.relentlessbadger.app.ui.ReportsScreen
 import com.relentlessbadger.app.ui.SettingsScreen
 import com.relentlessbadger.app.ui.SignInScreen
 import com.relentlessbadger.app.ui.theme.BadgerTheme
@@ -109,7 +110,7 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Tasks("Tasks", Icons.Filled.Checklist),
-    Today("Today", Icons.Filled.Today),
+    Reports("Reports", Icons.Filled.Assessment),
     Calendar("Calendar", Icons.Filled.CalendarMonth),
 }
 
@@ -150,7 +151,7 @@ private fun App(
         )
 
         // Above the Scaffold rather than over it, so the pager stops composing
-        // the Today tab while a second overview is on screen.
+        // the Reports tab while a second overview is on screen.
         viewModel.dayOverviewDate != null -> {
             val close = { viewModel.dayOverviewDate = null }
             BackHandler(onBack = close)
@@ -201,7 +202,7 @@ private fun App(
                             onOpenSettings = { showSettings = true },
                             requestNotificationPermission = requestNotificationPermission,
                         )
-                        Tab.Today -> DailyOverviewScreen(viewModel)
+                        Tab.Reports -> ReportsScreen(viewModel)
                         Tab.Calendar -> CalendarScreen(viewModel)
                     }
                 }

@@ -67,7 +67,8 @@ import java.time.ZoneId
  *
  * [date] null means today, followed live: the screen re-reads the clock so a
  * task crossing its start time moves up on its own and the digest rolls over at
- * midnight. A given date is fixed, and gets [onBack] to leave by.
+ * midnight. A given date is fixed, and gets [onBack] to leave by. [header]
+ * sits above the list, where the Reports tab puts its report switch.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,20 +76,15 @@ fun DailyOverviewScreen(
     viewModel: AppViewModel,
     date: LocalDate? = null,
     onBack: (() -> Unit)? = null,
+    header: @Composable () -> Unit = {},
 ) {
     val tasks by viewModel.openTasks.collectAsState()
     val context = LocalContext.current
     val use24Hour = DateFormat.is24HourFormat(context)
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     // Ticks so a task crossing its start time moves from "Later today" up into
     // "Now" on its own, without waiting for a data change.
-    val nowMillis by produceState(System.currentTimeMillis()) {
-        while (true) {
-            delay(15_000)
-            value = System.currentTimeMillis()
-        }
-    }
+    val nowMillis = rememberTickingNow()
     val shownDate = date ?: Instant.ofEpochMilli(nowMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     // Looking back, the day's point is what came of it, so completions lead;
     // today's point is what is still owed, so they stay out of the way.
@@ -113,26 +109,8 @@ fun DailyOverviewScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        shareOverview(
-                            context,
-                            title,
-                            renderDailyOverview(overview, title, use24Hour, OverviewTextStyle.MARKDOWN),
-                        )
-                    }) {
-                        Icon(Icons.Filled.Share, contentDescription = "Share $title")
-                    }
-                    IconButton(onClick = {
-                        val copied = copyOverview(
-                            context,
-                            title,
-                            renderDailyOverview(overview, title, use24Hour, OverviewTextStyle.PLAIN),
-                        )
-                        if (copied) {
-                            scope.launch { snackbarHostState.showSnackbar("Copied the list") }
-                        }
-                    }) {
-                        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $title")
+                    ReportActions(title, snackbarHostState) { style ->
+                        renderDailyOverview(overview, title, use24Hour, style)
                     }
                 },
             )
@@ -145,6 +123,7 @@ fun DailyOverviewScreen(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp),
         ) {
+            header()
             FilterChip(
                 selected = includeConcluded,
                 onClick = { includeConcluded = !includeConcluded },
@@ -300,6 +279,42 @@ internal fun overviewTimeLabel(
         OverviewSectionKind.OVERDUE -> "was due $when_"
         OverviewSectionKind.DONE -> "done $when_"
         OverviewSectionKind.LATER, OverviewSectionKind.SCHEDULED -> when_
+    }
+}
+
+/** The clock, re-read every 15 s, for reports that sort by what has begun. */
+@Composable
+internal fun rememberTickingNow(): Long {
+    val nowMillis by produceState(System.currentTimeMillis()) {
+        while (true) {
+            delay(15_000)
+            value = System.currentTimeMillis()
+        }
+    }
+    return nowMillis
+}
+
+/**
+ * Share and Copy for a report's top bar. [render] is asked at tap time, so what
+ * leaves the app is the report as it stands then.
+ */
+@Composable
+internal fun ReportActions(
+    title: String,
+    snackbarHostState: SnackbarHostState,
+    render: (OverviewTextStyle) -> String,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    IconButton(onClick = { shareOverview(context, title, render(OverviewTextStyle.MARKDOWN)) }) {
+        Icon(Icons.Filled.Share, contentDescription = "Share $title")
+    }
+    IconButton(onClick = {
+        if (copyOverview(context, title, render(OverviewTextStyle.PLAIN))) {
+            scope.launch { snackbarHostState.showSnackbar("Copied the list") }
+        }
+    }) {
+        Icon(Icons.Filled.ContentCopy, contentDescription = "Copy $title")
     }
 }
 

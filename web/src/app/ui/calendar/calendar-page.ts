@@ -260,7 +260,7 @@ export class CalendarPage {
 
   readonly selectedLabel = computed(() => formatDayTitle(this.state.selectedCalendarDate()));
 
-  /** The same digest the Today tab shows, pointed at the day on screen. */
+  /** The same digest the Today report shows, pointed at the day on screen. */
   protected openDayOverview(): void {
     void this.router.navigate(['/day', dateKey(this.state.selectedCalendarDate())]);
   }

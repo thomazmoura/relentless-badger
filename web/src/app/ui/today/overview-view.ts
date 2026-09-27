@@ -2,7 +2,6 @@ import { ChangeDetectionStrategy, Component, computed, inject, input, model } fr
 import { MatButtonModule } from '@angular/material/button';
 import { MatChipsModule } from '@angular/material/chips';
 import { MatIconModule } from '@angular/material/icon';
-import { MatSnackBar } from '@angular/material/snack-bar';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
 import {
@@ -13,6 +12,7 @@ import {
 } from '../../core/domain/daily-overview';
 import { formatDayTitle, prefers24Hour } from '../../core/domain/format';
 import { LocalDate } from '../../core/domain/time';
+import { ReportShare } from '../reports/report-share';
 import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-export';
 
 /**
@@ -23,7 +23,8 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
  *
  * `date` null means today, followed live: the state's ticking clock moves a
  * task up on its own and rolls the digest over at midnight. A given date is
- * fixed, and gets a back button to leave by.
+ * fixed, and gets a back button to leave by. Projected content sits above the
+ * list, where the Reports tab puts its report switch.
  */
 @Component({
   selector: 'app-overview-view',
@@ -48,6 +49,7 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
 
     <div class="body">
       <div class="page-body">
+        <ng-content />
         <mat-chip-listbox hideSingleSelectionIndicator>
           <mat-chip-option
             [selected]="includeConcluded()"
@@ -145,14 +147,14 @@ import { overviewTimeLabel, renderDailyOverview, sectionLabel } from './today-ex
   `,
 })
 export class OverviewView {
-  /** The day to show; null follows the clock, as the Today tab does. */
+  /** The day to show; null follows the clock, as the Today report does. */
   readonly date = input<LocalDate | null>(null);
   /** Present only when there is somewhere to go back to. */
   readonly back = input<(() => void) | null>(null);
   readonly includeConcluded = model(false);
 
   protected readonly state = inject(AppState);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly reportShare = inject(ReportShare);
   private readonly use24Hour = prefers24Hour();
 
   protected readonly title = computed(() => {
@@ -188,38 +190,15 @@ export class OverviewView {
     return overviewTimeLabel(item, kind, this.use24Hour);
   }
 
-  protected async share(): Promise<void> {
-    const text = renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'markdown');
-    // Desktop browsers mostly lack the share sheet. Falling back to the
-    // clipboard keeps the button meaningful rather than hiding it on half the
-    // platforms the PWA runs on.
-    if (!('share' in navigator)) {
-      await this.writeClipboard(text, 'Sharing is not available here — copied instead');
-      return;
-    }
-    try {
-      await navigator.share({ text });
-    } catch (error) {
-      // A cancelled share sheet is the user changing their mind, not a failure.
-      if ((error as DOMException)?.name !== 'AbortError') {
-        this.snackBar.open('Could not share the list', undefined, { duration: 4000 });
-      }
-    }
+  protected share(): Promise<void> {
+    return this.reportShare.share(
+      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'markdown'),
+    );
   }
 
-  protected async copy(): Promise<void> {
-    const text = renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'plain');
-    await this.writeClipboard(text, 'Copied the list');
-  }
-
-  private async writeClipboard(text: string, message: string): Promise<void> {
-    try {
-      // Absent outside a secure context, and it can still reject when the
-      // document has lost focus.
-      await navigator.clipboard.writeText(text);
-      this.snackBar.open(message, undefined, { duration: 4000 });
-    } catch {
-      this.snackBar.open('Could not copy to the clipboard', undefined, { duration: 4000 });
-    }
+  protected copy(): Promise<void> {
+    return this.reportShare.copy(
+      renderDailyOverview(this.overview(), this.title(), this.use24Hour, 'plain'),
+    );
   }
 }

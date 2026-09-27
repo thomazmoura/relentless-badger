@@ -60,7 +60,7 @@ export class DayOverviewPage {
   constructor() {
     // The route drives the day the store fetches completions for.
     effect(() => this.state.overviewDate.set(this.date()));
-    // Handing it back to the clock, so the Today tab is live again.
+    // Handing it back to the clock, so the Today report is live again.
     inject(DestroyRef).onDestroy(() => this.state.overviewDate.set(null));
   }
 

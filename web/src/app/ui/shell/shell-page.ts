@@ -7,11 +7,11 @@ import { MatIconModule } from '@angular/material/icon';
 import { AppState } from '../../core/app-state';
 import { CalendarPage } from '../calendar/calendar-page';
 import { TasksPage } from '../tasks/tasks-page';
-import { TodayPage } from '../today/today-page';
+import { ReportsPage } from '../reports/reports-page';
 
 const TABS = [
   { key: 'tasks', label: 'Tasks', icon: 'checklist' },
-  { key: 'today', label: 'Today', icon: 'today' },
+  { key: 'reports', label: 'Reports', icon: 'assessment' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar_month' },
 ] as const;
 
@@ -22,13 +22,13 @@ const FROM_TASKS = 'badgerFromTasks';
 const SWIPE_THRESHOLD_PX = 60;
 
 /**
- * Tasks, Today and Calendar, swipeable and with a bottom bar. Tasks is home: the
+ * Tasks, Reports and Calendar, swipeable and with a bottom bar. Tasks is home: the
  * other tabs live in the URL as one history entry above it, so the browser's
  * back returns to Tasks, as the system back does on Android.
  */
 @Component({
   selector: 'app-shell-page',
-  imports: [MatButtonModule, MatIconModule, CalendarPage, TasksPage, TodayPage],
+  imports: [MatButtonModule, MatIconModule, CalendarPage, ReportsPage, TasksPage],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div
@@ -42,7 +42,7 @@ const SWIPE_THRESHOLD_PX = 60;
           <app-tasks-page />
         }
         @case (1) {
-          <app-today-page />
+          <app-reports-page />
         }
         @default {
           <app-calendar-page />

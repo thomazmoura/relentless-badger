@@ -135,7 +135,7 @@ export class AppState {
   // --- day overview --------------------------------------------------------
 
   /**
-   * The day the overview shows, null while the Today tab has it — that one
+   * The day the overview shows, null while the Today report has it — that one
    * follows the clock, so it rolls over at midnight on its own.
    */
   readonly overviewDate = signal<LocalDate | null>(null);
@@ -154,7 +154,7 @@ export class AppState {
   /**
    * Completions on the day the overview shows, for its optional "Done"
    * section. Scoped to the one day rather than reusing completedInMonth: the
-   * Today tab's day need not fall in the month the calendar is showing.
+   * Today report's day need not fall in the month the calendar is showing.
    */
   readonly completedOnOverviewDay: () => CompletedTask[] = this.repository.observeCompletedBetween(
     this.overviewDayStart,

@@ -1249,7 +1249,7 @@ private fun EditScheduleDialog(
 }
 
 /** "every day", "every 2 weeks · Mon, Wed, Fri" */
-private fun recurrenceLabel(recurrence: Recurrence): String {
+internal fun recurrenceLabel(recurrence: Recurrence): String {
     val cadence = when (recurrence.unit) {
         RecurUnit.DAYS -> if (recurrence.everyN == 1) "every day" else "every ${recurrence.everyN} days"
         RecurUnit.WEEKS -> if (recurrence.everyN == 1) "every week" else "every ${recurrence.everyN} weeks"

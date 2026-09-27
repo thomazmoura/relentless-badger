@@ -63,7 +63,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /**
      * Completions on [date], for the day overview's optional "Done" section.
      * Scoped to the one day rather than reusing [completedInMonth]: the Today
-     * tab's day need not fall in the month the calendar happens to be showing.
+     * report's day need not fall in the month the calendar happens to be showing.
      */
     fun completedOnDay(date: LocalDate): Flow<List<CompletedTaskEntity>> {
         val zone = ZoneId.systemDefault()
