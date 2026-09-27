@@ -110,8 +110,8 @@ class MainActivity : ComponentActivity() {
 
 private enum class Tab(val label: String, val icon: ImageVector) {
     Tasks("Tasks", Icons.Filled.Checklist),
-    Reports("Reports", Icons.Filled.Assessment),
     Calendar("Calendar", Icons.Filled.CalendarMonth),
+    Reports("Reports", Icons.Filled.Assessment),
 }
 
 @Composable
@@ -202,8 +202,8 @@ private fun App(
                             onOpenSettings = { showSettings = true },
                             requestNotificationPermission = requestNotificationPermission,
                         )
-                        Tab.Reports -> ReportsScreen(viewModel)
                         Tab.Calendar -> CalendarScreen(viewModel)
+                        Tab.Reports -> ReportsScreen(viewModel)
                     }
                 }
             }

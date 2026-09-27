@@ -31,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.relentlessbadger.app.data.RecurringCadence
+import com.relentlessbadger.app.data.RecurringReport
 import com.relentlessbadger.app.data.RecurringReportItem
 import com.relentlessbadger.app.data.buildRecurringReport
 
@@ -75,7 +77,7 @@ fun RecurringReportScreen(
         ) {
             header()
 
-            if (report.isEmpty()) {
+            if (report.isEmpty) {
                 Text(
                     "No recurring tasks.",
                     style = MaterialTheme.typography.bodyMedium,
@@ -86,7 +88,10 @@ fun RecurringReportScreen(
             }
 
             LazyColumn(Modifier.fillMaxSize()) {
-                items(report, key = { it.taskId }) { item -> RecurringRow(item, use24Hour) }
+                report.sections.forEach { section ->
+                    item(key = "header:${section.cadence}") { SectionHeader(cadenceLabel(section.cadence)) }
+                    items(section.items, key = { it.taskId }) { item -> RecurringRow(item, use24Hour) }
+                }
             }
         }
     }
@@ -140,25 +145,36 @@ private fun RecurringRow(item: RecurringReportItem, use24Hour: Boolean) {
 
 /** The screen as a message, in the same two styles as [renderDailyOverview]. */
 internal fun renderRecurringReport(
-    report: List<RecurringReportItem>,
+    report: RecurringReport,
     title: String,
     use24Hour: Boolean,
     style: OverviewTextStyle,
 ): String {
     val bold = if (style == OverviewTextStyle.MARKDOWN) "*" else ""
     val italic = if (style == OverviewTextStyle.MARKDOWN) "_" else ""
-    val lines = mutableListOf("${bold}RelentlessBadger — $title$bold", "")
+    val lines = mutableListOf("${bold}RelentlessBadger — $title$bold")
 
-    if (report.isEmpty()) {
+    if (report.isEmpty) {
+        lines += ""
         lines += "No recurring tasks."
         return lines.joinToString("\n")
     }
 
-    report.forEach {
-        lines += "• ${it.title} " +
-            "$italic(${recurringScheduleLabel(it, use24Hour)} · ${recurringNextLabel(it, use24Hour)})$italic"
+    report.sections.forEach { section ->
+        lines += ""
+        lines += "$bold${cadenceLabel(section.cadence)}$bold"
+        section.items.forEach {
+            lines += "• ${it.title} " +
+                "$italic(${recurringScheduleLabel(it, use24Hour)} · ${recurringNextLabel(it, use24Hour)})$italic"
+        }
     }
     return lines.joinToString("\n")
+}
+
+internal fun cadenceLabel(cadence: RecurringCadence): String = when (cadence) {
+    RecurringCadence.DAILY -> "Daily"
+    RecurringCadence.WEEKLY -> "Weekly"
+    RecurringCadence.OTHER -> "Less regular"
 }
 
 /** "every day at 09:00", "every 2 weeks · Mon, Wed at 6:30 PM". */

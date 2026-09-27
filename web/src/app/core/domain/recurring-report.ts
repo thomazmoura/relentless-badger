@@ -18,8 +18,32 @@ export interface RecurringReportItem {
 }
 
 /**
- * Every open recurring series, soonest first: how often it repeats, the hour it
- * fires at and when it fires next.
+ * How a series is grouped in the report. Every day and every week are the
+ * rhythms people plan around, so they lead; any other interval ("every 4
+ * days", "every 2 weeks") is harder to keep in your head and goes last.
+ */
+export type RecurringCadence = 'daily' | 'weekly' | 'other';
+
+const CADENCE_ORDER: readonly RecurringCadence[] = ['daily', 'weekly', 'other'];
+
+export function cadenceOf(recurrence: Recurrence): RecurringCadence {
+  if (recurrence.everyN !== 1) return 'other';
+  return recurrence.unit === 'days' ? 'daily' : 'weekly';
+}
+
+export interface RecurringReportSection {
+  readonly cadence: RecurringCadence;
+  readonly items: readonly RecurringReportItem[];
+}
+
+/** The series as the ordered cadence sections that have any. */
+export interface RecurringReport {
+  readonly sections: readonly RecurringReportSection[];
+}
+
+/**
+ * Every open recurring series, grouped by cadence and soonest first within
+ * each: how often it repeats, the hour it fires at and when it fires next.
  *
  * Only the current occurrence is an open row, so "next" is that row's first
  * nag — the same instant the task list and the Today report place it at. Once
@@ -29,7 +53,7 @@ export interface RecurringReportItem {
 export function buildRecurringReport(
   openTasks: readonly OpenTask[],
   nowMillis: number,
-): RecurringReportItem[] {
+): RecurringReport {
   const items: RecurringReportItem[] = [];
   for (const task of openTasks) {
     const recurrence = taskRecurrence(task);
@@ -46,10 +70,16 @@ export function buildRecurringReport(
   }
   // Tied timestamps get a stable title/id order so the list doesn't reshuffle
   // between ticks.
-  return items.sort(
+  items.sort(
     (a, b) =>
       a.nextAtMillis - b.nextAtMillis ||
       a.title.localeCompare(b.title) ||
       a.taskId.localeCompare(b.taskId),
   );
+  const sections: RecurringReportSection[] = [];
+  for (const cadence of CADENCE_ORDER) {
+    const inCadence = items.filter((item) => cadenceOf(item.recurrence) === cadence);
+    if (inCadence.length > 0) sections.push({ cadence, items: inCadence });
+  }
+  return { sections };
 }

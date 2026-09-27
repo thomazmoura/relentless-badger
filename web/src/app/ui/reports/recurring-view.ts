@@ -4,8 +4,17 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { AppState } from '../../core/app-state';
 import { prefers24Hour } from '../../core/domain/format';
-import { buildRecurringReport, RecurringReportItem } from '../../core/domain/recurring-report';
-import { recurringNextLabel, recurringScheduleLabel, renderRecurringReport } from './recurring-export';
+import {
+  buildRecurringReport,
+  RecurringCadence,
+  RecurringReportItem,
+} from '../../core/domain/recurring-report';
+import {
+  cadenceLabel,
+  recurringNextLabel,
+  recurringScheduleLabel,
+  renderRecurringReport,
+} from './recurring-export';
 import { ReportShare } from './report-share';
 
 /**
@@ -34,24 +43,27 @@ import { ReportShare } from './report-share';
       <div class="page-body">
         <ng-content />
 
-        @if (report().length === 0) {
+        @if (report().sections.length === 0) {
           <p class="empty">No recurring tasks.</p>
         } @else {
-          @for (item of report(); track item.taskId) {
-            <div class="entry">
-              <mat-icon
-                class="kind"
-                [class.nagging]="item.nagging"
-                [attr.aria-label]="item.nagging ? 'Nagging' : 'Repeats'"
-              >
-                {{ item.nagging ? 'notifications_active' : 'repeat' }}
-              </mat-icon>
-              <div class="text">
-                <span class="title">{{ item.title }}</span>
-                <span class="when">{{ scheduleLabel(item) }}</span>
-                <span class="when" [class.nagging]="item.nagging">{{ nextLabel(item) }}</span>
+          @for (section of report().sections; track section.cadence) {
+            <h2 class="section">{{ cadenceLabel(section.cadence) }}</h2>
+            @for (item of section.items; track item.taskId) {
+              <div class="entry">
+                <mat-icon
+                  class="kind"
+                  [class.nagging]="item.nagging"
+                  [attr.aria-label]="item.nagging ? 'Nagging' : 'Repeats'"
+                >
+                  {{ item.nagging ? 'notifications_active' : 'repeat' }}
+                </mat-icon>
+                <div class="text">
+                  <span class="title">{{ item.title }}</span>
+                  <span class="when">{{ scheduleLabel(item) }}</span>
+                  <span class="when" [class.nagging]="item.nagging">{{ nextLabel(item) }}</span>
+                </div>
               </div>
-            </div>
+            }
           }
         }
       </div>
@@ -74,6 +86,11 @@ import { ReportShare } from './report-share';
     }
     .empty {
       color: var(--mat-sys-on-surface-variant);
+    }
+    .section {
+      font: var(--mat-sys-title-small);
+      color: var(--mat-sys-primary);
+      margin: 1rem 0 0.25rem;
     }
     .entry {
       display: flex;
@@ -117,6 +134,10 @@ export class RecurringView {
   protected readonly report = computed(() =>
     buildRecurringReport(this.state.openTasks(), this.state.nowMillis()),
   );
+
+  protected cadenceLabel(cadence: RecurringCadence): string {
+    return cadenceLabel(cadence);
+  }
 
   protected scheduleLabel(item: RecurringReportItem): string {
     return recurringScheduleLabel(item, this.use24Hour);

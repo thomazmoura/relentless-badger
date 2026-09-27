@@ -11,8 +11,8 @@ import { ReportsPage } from '../reports/reports-page';
 
 const TABS = [
   { key: 'tasks', label: 'Tasks', icon: 'checklist' },
-  { key: 'reports', label: 'Reports', icon: 'assessment' },
   { key: 'calendar', label: 'Calendar', icon: 'calendar_month' },
+  { key: 'reports', label: 'Reports', icon: 'assessment' },
 ] as const;
 
 /** Marks a history entry pushed on top of Tasks, so going home can pop it. */
@@ -22,7 +22,7 @@ const FROM_TASKS = 'badgerFromTasks';
 const SWIPE_THRESHOLD_PX = 60;
 
 /**
- * Tasks, Reports and Calendar, swipeable and with a bottom bar. Tasks is home: the
+ * Tasks, Calendar and Reports, swipeable and with a bottom bar. Tasks is home: the
  * other tabs live in the URL as one history entry above it, so the browser's
  * back returns to Tasks, as the system back does on Android.
  */
@@ -42,10 +42,10 @@ const SWIPE_THRESHOLD_PX = 60;
           <app-tasks-page />
         }
         @case (1) {
-          <app-reports-page />
+          <app-calendar-page />
         }
         @default {
-          <app-calendar-page />
+          <app-reports-page />
         }
       }
     </div>

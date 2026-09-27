@@ -163,7 +163,7 @@ internal fun sectionLabel(kind: OverviewSectionKind): String = when (kind) {
 }
 
 @Composable
-private fun SectionHeader(label: String) {
+internal fun SectionHeader(label: String) {
     Text(
         label,
         style = MaterialTheme.typography.titleSmall,

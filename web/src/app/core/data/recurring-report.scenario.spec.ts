@@ -17,7 +17,9 @@ describe('recurring report', () => {
   const daily = recurrenceOf(1, 'days');
 
   const report = async () =>
-    buildRecurringReport(await badger.taskDao.getActive(), badger.clock.now());
+    buildRecurringReport(await badger.taskDao.getActive(), badger.clock.now()).sections.flatMap(
+      (section) => section.items,
+    );
 
   it('reports the occurrence a completion spawned as next', async () => {
     const firstAt = badger.clock.now() + 9 * 60 * MINUTE;

@@ -25,7 +25,7 @@ class RecurringReportScenarios : ScenarioTest() {
 
         whenTimeAdvancesMinutes(9 * 60 + 5)
         whenTaskCompleted(task.id)
-        val item = buildRecurringReport(taskDao.getActive(), clock.now()).single()
+        val item = buildRecurringReport(taskDao.getActive(), clock.now()).sections.single().items.single()
 
         assertEquals("take pills", item.title)
         assertEquals(firstAt + 24 * 60 * MINUTE, item.nextAtMillis)
@@ -38,7 +38,7 @@ class RecurringReportScenarios : ScenarioTest() {
         whenTaskCreated("take pills", firstWarningAtMillis = firstAt, recurrence = daily)
 
         whenTimeAdvancesMinutes(45)
-        val item = buildRecurringReport(taskDao.getActive(), clock.now()).single()
+        val item = buildRecurringReport(taskDao.getActive(), clock.now()).sections.single().items.single()
 
         assertTrue(item.nagging)
         assertEquals(firstAt, item.nextAtMillis)
@@ -48,7 +48,7 @@ class RecurringReportScenarios : ScenarioTest() {
     fun `a one-off task stays out of the report`() = scenario {
         whenTaskCreated("renew passport", firstWarningAtMillis = clock.now() + 30 * MINUTE)
 
-        assertTrue(buildRecurringReport(taskDao.getActive(), clock.now()).isEmpty())
+        assertTrue(buildRecurringReport(taskDao.getActive(), clock.now()).isEmpty)
     }
 
     @Test
@@ -57,7 +57,7 @@ class RecurringReportScenarios : ScenarioTest() {
         val task = whenTaskCreated("take pills", firstWarningAtMillis = firstAt, recurrence = daily)
 
         whenTaskCancelled(task.id)
-        val item = buildRecurringReport(taskDao.getActive(), clock.now()).single()
+        val item = buildRecurringReport(taskDao.getActive(), clock.now()).sections.single().items.single()
 
         assertEquals(firstAt + 24 * 60 * MINUTE, item.nextAtMillis)
     }

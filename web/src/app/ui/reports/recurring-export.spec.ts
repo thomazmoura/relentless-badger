@@ -1,5 +1,5 @@
 import { recurrenceOf } from '../../core/domain/models';
-import { RecurringReportItem } from '../../core/domain/recurring-report';
+import { RecurringReport, RecurringReportItem } from '../../core/domain/recurring-report';
 import { epochFor, systemZone } from '../../core/domain/time';
 import { renderRecurringReport } from './recurring-export';
 
@@ -29,33 +29,46 @@ describe('renderRecurringReport', () => {
     nagging: false,
   };
 
+  const bothSections: RecurringReport = {
+    sections: [
+      { cadence: 'daily', items: [pills] },
+      { cadence: 'other', items: [bins] },
+    ],
+  };
+
+  const binsOnly: RecurringReport = { sections: [{ cadence: 'other', items: [bins] }] };
+
   it('carries the WhatsApp and Telegram markers in markdown', () => {
-    const text = renderRecurringReport([pills, bins], 'Recurring', true, 'markdown');
+    const text = renderRecurringReport(bothSections, 'Recurring', true, 'markdown');
 
     expect(text).toBe(
       [
         '*RelentlessBadger — Recurring*',
         '',
+        '*Daily*',
         '• Take pills _(every day at 09:00 · nagging since Sep 26, 09:00)_',
+        '',
+        '*Less regular*',
         '• Put the bins out _(every 2 weeks · Mon, Wed at 18:30 · next Sep 28, 18:30)_',
       ].join('\n'),
     );
   });
 
   it('drops the markers in plain and honours the 12-hour clock', () => {
-    const text = renderRecurringReport([bins], 'Recurring', false, 'plain');
+    const text = renderRecurringReport(binsOnly, 'Recurring', false, 'plain');
 
     expect(text).toBe(
       [
         'RelentlessBadger — Recurring',
         '',
+        'Less regular',
         '• Put the bins out (every 2 weeks · Mon, Wed at 6:30 PM · next Sep 28, 6:30 PM)',
       ].join('\n'),
     );
   });
 
   it('says so when the report is empty', () => {
-    const text = renderRecurringReport([], 'Recurring', true, 'plain');
+    const text = renderRecurringReport({ sections: [] }, 'Recurring', true, 'plain');
 
     expect(text).toBe('RelentlessBadger — Recurring\n\nNo recurring tasks.');
   });

@@ -2,7 +2,10 @@ package com.relentlessbadger.app.ui
 
 import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.Recurrence
+import com.relentlessbadger.app.data.RecurringCadence
+import com.relentlessbadger.app.data.RecurringReport
 import com.relentlessbadger.app.data.RecurringReportItem
+import com.relentlessbadger.app.data.RecurringReportSection
 import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
@@ -37,6 +40,15 @@ class RecurringReportTextTest {
         nagging = false,
     )
 
+    private val bothSections = RecurringReport(
+        listOf(
+            RecurringReportSection(RecurringCadence.DAILY, listOf(pills)),
+            RecurringReportSection(RecurringCadence.OTHER, listOf(bins)),
+        ),
+    )
+
+    private val binsOnly = RecurringReport(listOf(RecurringReportSection(RecurringCadence.OTHER, listOf(bins))))
+
     @Before
     fun pinLocale() {
         Locale.setDefault(Locale.US)
@@ -44,13 +56,16 @@ class RecurringReportTextTest {
 
     @Test
     fun `markdown carries the whatsapp and telegram markers`() {
-        val text = renderRecurringReport(listOf(pills, bins), "Recurring", use24Hour = true, OverviewTextStyle.MARKDOWN)
+        val text = renderRecurringReport(bothSections, "Recurring", use24Hour = true, OverviewTextStyle.MARKDOWN)
 
         assertEquals(
             """
             *RelentlessBadger — Recurring*
 
+            *Daily*
             • Take pills _(every day at 09:00 · nagging since Sep 26, 09:00)_
+
+            *Less regular*
             • Put the bins out _(every 2 weeks · Mon, Wed at 18:30 · next Sep 28, 18:30)_
             """.trimIndent(),
             text,
@@ -59,12 +74,13 @@ class RecurringReportTextTest {
 
     @Test
     fun `plain drops the markers and honours the 12-hour clock`() {
-        val text = renderRecurringReport(listOf(bins), "Recurring", use24Hour = false, OverviewTextStyle.PLAIN)
+        val text = renderRecurringReport(binsOnly, "Recurring", use24Hour = false, OverviewTextStyle.PLAIN)
 
         assertEquals(
             """
             RelentlessBadger — Recurring
 
+            Less regular
             • Put the bins out (every 2 weeks · Mon, Wed at 6:30 PM · next Sep 28, 6:30 PM)
             """.trimIndent(),
             text,
@@ -73,7 +89,7 @@ class RecurringReportTextTest {
 
     @Test
     fun `an empty report says so`() {
-        val text = renderRecurringReport(emptyList(), "Recurring", use24Hour = true, OverviewTextStyle.PLAIN)
+        val text = renderRecurringReport(RecurringReport(emptyList()), "Recurring", use24Hour = true, OverviewTextStyle.PLAIN)
 
         assertEquals("RelentlessBadger — Recurring\n\nNo recurring tasks.", text)
     }

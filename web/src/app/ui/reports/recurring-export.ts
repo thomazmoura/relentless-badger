@@ -1,31 +1,49 @@
 // Ported from RecurringReportScreen.kt's export section.
-import { RecurringReportItem } from '../../core/domain/recurring-report';
+import {
+  RecurringCadence,
+  RecurringReport,
+  RecurringReportItem,
+} from '../../core/domain/recurring-report';
 import { formatDateTime, formatTimeOfDay, recurrenceLabel } from '../../core/domain/format';
 import { OverviewTextStyle } from '../today/today-export';
 
 /** The screen as a message, in the same two styles as renderDailyOverview. */
 export function renderRecurringReport(
-  report: readonly RecurringReportItem[],
+  report: RecurringReport,
   title: string,
   use24Hour: boolean,
   style: OverviewTextStyle,
 ): string {
   const bold = style === 'markdown' ? '*' : '';
   const italic = style === 'markdown' ? '_' : '';
-  const lines = [`${bold}RelentlessBadger — ${title}${bold}`, ''];
+  const lines = [`${bold}RelentlessBadger — ${title}${bold}`];
 
-  if (report.length === 0) {
-    lines.push('No recurring tasks.');
+  if (report.sections.length === 0) {
+    lines.push('', 'No recurring tasks.');
     return lines.join('\n');
   }
 
-  for (const item of report) {
-    lines.push(
-      `• ${item.title} ` +
-        `${italic}(${recurringScheduleLabel(item, use24Hour)} · ${recurringNextLabel(item, use24Hour)})${italic}`,
-    );
+  for (const section of report.sections) {
+    lines.push('', `${bold}${cadenceLabel(section.cadence)}${bold}`);
+    for (const item of section.items) {
+      lines.push(
+        `• ${item.title} ` +
+          `${italic}(${recurringScheduleLabel(item, use24Hour)} · ${recurringNextLabel(item, use24Hour)})${italic}`,
+      );
+    }
   }
   return lines.join('\n');
+}
+
+export function cadenceLabel(cadence: RecurringCadence): string {
+  switch (cadence) {
+    case 'daily':
+      return 'Daily';
+    case 'weekly':
+      return 'Weekly';
+    case 'other':
+      return 'Less regular';
+  }
 }
 
 /** "every day at 09:00", "every 2 weeks · Mon, Wed at 6:30 PM". */
