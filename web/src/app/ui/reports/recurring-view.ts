@@ -6,6 +6,7 @@ import { AppState } from '../../core/app-state';
 import { prefers24Hour } from '../../core/domain/format';
 import {
   buildRecurringReport,
+  cadenceKey,
   RecurringCadence,
   RecurringReportItem,
 } from '../../core/domain/recurring-report';
@@ -46,7 +47,7 @@ import { ReportShare } from './report-share';
         @if (report().sections.length === 0) {
           <p class="empty">No recurring tasks.</p>
         } @else {
-          @for (section of report().sections; track section.cadence) {
+          @for (section of report().sections; track cadenceKey(section.cadence)) {
             <h2 class="section">{{ cadenceLabel(section.cadence) }}</h2>
             @for (item of section.items; track item.taskId) {
               <div class="entry">
@@ -134,6 +135,8 @@ export class RecurringView {
   protected readonly report = computed(() =>
     buildRecurringReport(this.state.openTasks(), this.state.nowMillis()),
   );
+
+  protected readonly cadenceKey = cadenceKey;
 
   protected cadenceLabel(cadence: RecurringCadence): string {
     return cadenceLabel(cadence);

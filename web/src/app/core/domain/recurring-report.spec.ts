@@ -48,46 +48,70 @@ describe('buildRecurringReport', () => {
     expect(items(report).map((item) => item.taskId)).toEqual(['daily']);
   });
 
-  it('lists series soonest first within a section', () => {
+  it('runs a section through the day by the hour each series fires at', () => {
     const report = buildRecurringReport(
       [
+        // Tomorrow's morning still comes first: the date is not the point.
         openTask('evening', at(2026, 7, 15, 20), daily),
         openTask('morning', at(2026, 7, 16, 9), daily),
         openTask('afternoon', at(2026, 7, 15, 15), daily),
       ],
       now,
+      zone,
     );
 
-    expect(items(report).map((item) => item.taskId)).toEqual(['afternoon', 'evening', 'morning']);
+    expect(items(report).map((item) => item.taskId)).toEqual(['morning', 'afternoon', 'evening']);
   });
 
-  it('leads with daily series, then weekly, then any other interval', () => {
+  it('leads with daily and weekly, then gives each other interval its own section, shortest first', () => {
     const report = buildRecurringReport(
       [
-        // The sooner fire does not pull a less regular series ahead.
-        openTask('every 4 days', at(2026, 7, 15, 13), recurrenceOf(4, 'days')),
-        openTask('every 2 weeks', at(2026, 7, 15, 14), recurrenceOf(2, 'weeks', 1)),
+        openTask('every 2 weeks', at(2026, 7, 20, 8), recurrenceOf(2, 'weeks', 1)),
+        openTask('every 14 days', at(2026, 7, 20, 8), recurrenceOf(14, 'days')),
+        openTask('every 4 days', at(2026, 7, 16, 9), recurrenceOf(4, 'days')),
+        openTask('every 2 days', at(2026, 7, 16, 9), recurrenceOf(2, 'days')),
         openTask('weekly', at(2026, 7, 20, 8), recurrenceOf(1, 'weeks', 1)),
         openTask('daily', at(2026, 7, 16, 9), daily),
       ],
       now,
+      zone,
     );
 
-    expect(report.sections.map((section) => section.cadence)).toEqual(['daily', 'weekly', 'other']);
-    expect(report.sections.map((section) => section.items.map((item) => item.taskId))).toEqual([
-      ['daily'],
-      ['weekly'],
-      ['every 4 days', 'every 2 weeks'],
+    expect(report.sections.map((section) => section.cadence)).toEqual([
+      { everyN: 1, unit: 'days' },
+      { everyN: 1, unit: 'weeks' },
+      { everyN: 2, unit: 'days' },
+      { everyN: 4, unit: 'days' },
+      { everyN: 14, unit: 'days' },
+      { everyN: 2, unit: 'weeks' },
     ]);
   });
 
-  it('gives a cadence with no series no section', () => {
+  it('puts weekly series on different weekdays in one section', () => {
+    const report = buildRecurringReport(
+      [
+        openTask('mondays', at(2026, 7, 20, 8), recurrenceOf(1, 'weeks', 1)),
+        openTask('fridays', at(2026, 7, 17, 7), recurrenceOf(1, 'weeks', 16)),
+      ],
+      now,
+      zone,
+    );
+
+    expect(report.sections.map((section) => section.items.map((item) => item.taskId))).toEqual([
+      ['fridays', 'mondays'],
+    ]);
+  });
+
+  it('gives an interval with no series no section', () => {
     const report = buildRecurringReport(
       [openTask('every 3 days', at(2026, 7, 16, 9), recurrenceOf(3, 'days'))],
       now,
+      zone,
     );
 
-    expect(report.sections.map((section) => section.cadence)).toEqual(['other']);
+    expect(report.sections.map((section) => section.cadence)).toEqual([
+      { everyN: 3, unit: 'days' },
+    ]);
   });
 
   it('reports an upcoming occurrence as next, not nagging', () => {

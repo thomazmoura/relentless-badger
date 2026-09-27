@@ -55,50 +55,72 @@ class RecurringReportTest {
     }
 
     @Test
-    fun `series are listed soonest first within a section`() {
+    fun `a section runs through the day by the hour each series fires at`() {
         val report = buildRecurringReport(
             listOf(
+                // Tomorrow's morning still comes first: the date is not the point.
                 openTask("evening", at(2026, 7, 15, 20), daily),
                 openTask("morning", at(2026, 7, 16, 9), daily),
                 openTask("afternoon", at(2026, 7, 15, 15), daily),
             ),
             now,
+            zone,
         )
 
-        assertEquals(listOf("afternoon", "evening", "morning"), report.items().map { it.taskId })
+        assertEquals(listOf("morning", "afternoon", "evening"), report.items().map { it.taskId })
     }
 
     @Test
-    fun `daily series lead, then weekly, then any other interval`() {
+    fun `daily and weekly lead, then each other interval in its own section, shortest first`() {
         val report = buildRecurringReport(
             listOf(
-                // The sooner fire does not pull a less regular series ahead.
-                openTask("every 4 days", at(2026, 7, 15, 13), Recurrence(4, RecurUnit.DAYS)),
-                openTask("every 2 weeks", at(2026, 7, 15, 14), Recurrence(2, RecurUnit.WEEKS, daysOfWeek = 1)),
+                openTask("every 2 weeks", at(2026, 7, 20, 8), Recurrence(2, RecurUnit.WEEKS, daysOfWeek = 1)),
+                openTask("every 14 days", at(2026, 7, 20, 8), Recurrence(14, RecurUnit.DAYS)),
+                openTask("every 4 days", at(2026, 7, 16, 9), Recurrence(4, RecurUnit.DAYS)),
+                openTask("every 2 days", at(2026, 7, 16, 9), Recurrence(2, RecurUnit.DAYS)),
                 openTask("weekly", at(2026, 7, 20, 8), Recurrence(1, RecurUnit.WEEKS, daysOfWeek = 1)),
                 openTask("daily", at(2026, 7, 16, 9), daily),
             ),
             now,
+            zone,
         )
 
         assertEquals(
-            listOf(RecurringCadence.DAILY, RecurringCadence.WEEKLY, RecurringCadence.OTHER),
+            listOf(
+                RecurringCadence(1, RecurUnit.DAYS),
+                RecurringCadence(1, RecurUnit.WEEKS),
+                RecurringCadence(2, RecurUnit.DAYS),
+                RecurringCadence(4, RecurUnit.DAYS),
+                RecurringCadence(14, RecurUnit.DAYS),
+                RecurringCadence(2, RecurUnit.WEEKS),
+            ),
             report.sections.map { it.cadence },
-        )
-        assertEquals(
-            listOf(listOf("daily"), listOf("weekly"), listOf("every 4 days", "every 2 weeks")),
-            report.sections.map { section -> section.items.map { it.taskId } },
         )
     }
 
     @Test
-    fun `a cadence with no series gets no section`() {
+    fun `weekly series on different weekdays share a section`() {
+        val report = buildRecurringReport(
+            listOf(
+                openTask("mondays", at(2026, 7, 20, 8), Recurrence(1, RecurUnit.WEEKS, daysOfWeek = 1)),
+                openTask("fridays", at(2026, 7, 17, 7), Recurrence(1, RecurUnit.WEEKS, daysOfWeek = 16)),
+            ),
+            now,
+            zone,
+        )
+
+        assertEquals(listOf(listOf("fridays", "mondays")), report.sections.map { s -> s.items.map { it.taskId } })
+    }
+
+    @Test
+    fun `an interval with no series gets no section`() {
         val report = buildRecurringReport(
             listOf(openTask("every 3 days", at(2026, 7, 16, 9), Recurrence(3, RecurUnit.DAYS))),
             now,
+            zone,
         )
 
-        assertEquals(listOf(RecurringCadence.OTHER), report.sections.map { it.cadence })
+        assertEquals(listOf(RecurringCadence(3, RecurUnit.DAYS)), report.sections.map { it.cadence })
     }
 
     @Test

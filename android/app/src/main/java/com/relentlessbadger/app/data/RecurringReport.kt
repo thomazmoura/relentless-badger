@@ -1,6 +1,8 @@
 package com.relentlessbadger.app.data
 
 import com.relentlessbadger.app.db.OpenTaskEntity
+import java.time.Instant
+import java.time.ZoneId
 
 data class RecurringReportItem(
     val taskId: String,
@@ -18,17 +20,33 @@ data class RecurringReportItem(
 )
 
 /**
- * How a series is grouped in the report. Every day and every week are the
- * rhythms people plan around, so they lead; any other interval ("every 4
- * days", "every 2 weeks") is harder to keep in your head and goes last.
+ * How often a series repeats, which is what the report groups it by. The
+ * weekdays a weekly series fires on are left out: "every 2 weeks" is one
+ * section whatever days each series picks, and its rows say which.
  */
-enum class RecurringCadence { DAILY, WEEKLY, OTHER }
-
-fun cadenceOf(recurrence: Recurrence): RecurringCadence = when {
-    recurrence.everyN != 1 -> RecurringCadence.OTHER
-    recurrence.unit == RecurUnit.DAYS -> RecurringCadence.DAILY
-    else -> RecurringCadence.WEEKLY
+data class RecurringCadence(val everyN: Int, val unit: RecurUnit) {
+    /** How many days one cycle spans, for ordering the intervals. */
+    val periodDays: Int get() = if (unit == RecurUnit.WEEKS) everyN * 7 else everyN
 }
+
+fun cadenceOf(recurrence: Recurrence): RecurringCadence =
+    RecurringCadence(recurrence.everyN, recurrence.unit)
+
+/**
+ * Every day and every week are the rhythms people plan around, so they lead;
+ * the other intervals follow, shortest first, "every 14 days" ahead of the
+ * "every 2 weeks" it matches.
+ */
+private val cadenceOrder: Comparator<RecurringCadence> =
+    compareBy<RecurringCadence> {
+        when (it) {
+            RecurringCadence(1, RecurUnit.DAYS) -> 0
+            RecurringCadence(1, RecurUnit.WEEKS) -> 1
+            else -> 2
+        }
+    }
+        .thenBy { it.periodDays }
+        .thenBy { it.unit }
 
 data class RecurringReportSection(val cadence: RecurringCadence, val items: List<RecurringReportItem>)
 
@@ -38,8 +56,9 @@ data class RecurringReport(val sections: List<RecurringReportSection>) {
 }
 
 /**
- * Every open recurring series, grouped by cadence and soonest first within
- * each: how often it repeats, the hour it fires at and when it fires next.
+ * Every open recurring series, one section per interval, each running through
+ * the day by the hour its series fires at: how often it repeats, that hour and
+ * when it fires next.
  *
  * Only the current occurrence is an open row, so "next" is that row's first
  * nag — the same instant the task list and the Today report place it at. Once
@@ -49,27 +68,30 @@ data class RecurringReport(val sections: List<RecurringReportSection>) {
 fun buildRecurringReport(
     openTasks: List<OpenTaskEntity>,
     nowMillis: Long,
+    zone: ZoneId = ZoneId.systemDefault(),
 ): RecurringReport {
-    val items = openTasks
-        .mapNotNull { task ->
-            val recurrence = task.recurrence() ?: return@mapNotNull null
-            RecurringReportItem(
-                taskId = task.id,
-                title = task.title,
-                recurrence = recurrence,
-                anchorMillis = task.firstWarningAtMillis ?: task.createdAtMillis,
-                nextAtMillis = task.firstNagAtMillis(),
-                // As the task list has it: a null first warning counts as nagging.
-                nagging = (task.firstWarningAtMillis ?: 0L) <= nowMillis,
-            )
-        }
-        // Tied timestamps get a stable title/id order so the list doesn't
-        // reshuffle between ticks.
-        .sortedWith(compareBy({ it.nextAtMillis }, { it.title }, { it.taskId }))
-    val byCadence = items.groupBy { cadenceOf(it.recurrence) }
+    val items = openTasks.mapNotNull { task ->
+        val recurrence = task.recurrence() ?: return@mapNotNull null
+        RecurringReportItem(
+            taskId = task.id,
+            title = task.title,
+            recurrence = recurrence,
+            anchorMillis = task.firstWarningAtMillis ?: task.createdAtMillis,
+            nextAtMillis = task.firstNagAtMillis(),
+            // As the task list has it: a null first warning counts as nagging.
+            nagging = (task.firstWarningAtMillis ?: 0L) <= nowMillis,
+        )
+    }
+    // The time of day, not the next date: within an interval the section reads
+    // as a routine. Ties get a stable title/id order so rows don't reshuffle.
+    val order = compareBy<RecurringReportItem>(
+        { Instant.ofEpochMilli(it.anchorMillis).atZone(zone).toLocalTime() },
+        { it.title },
+        { it.taskId },
+    )
     return RecurringReport(
-        RecurringCadence.entries.mapNotNull { cadence ->
-            byCadence[cadence]?.let { RecurringReportSection(cadence, it) }
-        },
+        items.groupBy { cadenceOf(it.recurrence) }
+            .toSortedMap(cadenceOrder)
+            .map { (cadence, inCadence) -> RecurringReportSection(cadence, inCadence.sortedWith(order)) },
     )
 }

@@ -35,15 +35,10 @@ export function renderRecurringReport(
   return lines.join('\n');
 }
 
+/** "Daily", "Weekly", "Every 4 days", "Every 2 weeks". */
 export function cadenceLabel(cadence: RecurringCadence): string {
-  switch (cadence) {
-    case 'daily':
-      return 'Daily';
-    case 'weekly':
-      return 'Weekly';
-    case 'other':
-      return 'Less regular';
-  }
+  if (cadence.everyN === 1) return cadence.unit === 'days' ? 'Daily' : 'Weekly';
+  return `Every ${cadence.everyN} ${cadence.unit}`;
 }
 
 /** "every day at 09:00", "every 2 weeks · Mon, Wed at 6:30 PM". */

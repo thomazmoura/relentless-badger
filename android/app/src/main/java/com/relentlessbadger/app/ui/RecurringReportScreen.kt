@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.RecurringCadence
 import com.relentlessbadger.app.data.RecurringReport
 import com.relentlessbadger.app.data.RecurringReportItem
@@ -171,10 +172,12 @@ internal fun renderRecurringReport(
     return lines.joinToString("\n")
 }
 
-internal fun cadenceLabel(cadence: RecurringCadence): String = when (cadence) {
-    RecurringCadence.DAILY -> "Daily"
-    RecurringCadence.WEEKLY -> "Weekly"
-    RecurringCadence.OTHER -> "Less regular"
+/** "Daily", "Weekly", "Every 4 days", "Every 2 weeks". */
+internal fun cadenceLabel(cadence: RecurringCadence): String = when {
+    cadence.everyN == 1 && cadence.unit == RecurUnit.DAYS -> "Daily"
+    cadence.everyN == 1 -> "Weekly"
+    cadence.unit == RecurUnit.DAYS -> "Every ${cadence.everyN} days"
+    else -> "Every ${cadence.everyN} weeks"
 }
 
 /** "every day at 09:00", "every 2 weeks · Mon, Wed at 6:30 PM". */

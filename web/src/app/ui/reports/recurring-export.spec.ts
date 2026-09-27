@@ -1,7 +1,7 @@
 import { recurrenceOf } from '../../core/domain/models';
 import { RecurringReport, RecurringReportItem } from '../../core/domain/recurring-report';
 import { epochFor, systemZone } from '../../core/domain/time';
-import { renderRecurringReport } from './recurring-export';
+import { cadenceLabel, renderRecurringReport } from './recurring-export';
 
 // Ported from RecurringReportTextTest.kt.
 describe('renderRecurringReport', () => {
@@ -31,12 +31,14 @@ describe('renderRecurringReport', () => {
 
   const bothSections: RecurringReport = {
     sections: [
-      { cadence: 'daily', items: [pills] },
-      { cadence: 'other', items: [bins] },
+      { cadence: { everyN: 1, unit: 'days' }, items: [pills] },
+      { cadence: { everyN: 2, unit: 'weeks' }, items: [bins] },
     ],
   };
 
-  const binsOnly: RecurringReport = { sections: [{ cadence: 'other', items: [bins] }] };
+  const binsOnly: RecurringReport = {
+    sections: [{ cadence: { everyN: 2, unit: 'weeks' }, items: [bins] }],
+  };
 
   it('carries the WhatsApp and Telegram markers in markdown', () => {
     const text = renderRecurringReport(bothSections, 'Recurring', true, 'markdown');
@@ -48,7 +50,7 @@ describe('renderRecurringReport', () => {
         '*Daily*',
         '• Take pills _(every day at 09:00 · nagging since Sep 26, 09:00)_',
         '',
-        '*Less regular*',
+        '*Every 2 weeks*',
         '• Put the bins out _(every 2 weeks · Mon, Wed at 18:30 · next Sep 28, 18:30)_',
       ].join('\n'),
     );
@@ -61,10 +63,17 @@ describe('renderRecurringReport', () => {
       [
         'RelentlessBadger — Recurring',
         '',
-        'Less regular',
+        'Every 2 weeks',
         '• Put the bins out (every 2 weeks · Mon, Wed at 6:30 PM · next Sep 28, 6:30 PM)',
       ].join('\n'),
     );
+  });
+
+  it('names sections after their interval', () => {
+    expect(cadenceLabel({ everyN: 1, unit: 'days' })).toBe('Daily');
+    expect(cadenceLabel({ everyN: 1, unit: 'weeks' })).toBe('Weekly');
+    expect(cadenceLabel({ everyN: 4, unit: 'days' })).toBe('Every 4 days');
+    expect(cadenceLabel({ everyN: 2, unit: 'weeks' })).toBe('Every 2 weeks');
   });
 
   it('says so when the report is empty', () => {
