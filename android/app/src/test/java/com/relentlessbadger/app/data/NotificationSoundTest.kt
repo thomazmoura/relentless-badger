@@ -48,4 +48,26 @@ class NotificationSoundTest {
             parseNotificationSound("custom:content://x/1"),
         )
     }
+
+    @Test
+    fun `every stream round-trips through storage`() {
+        SoundStream.entries.forEach {
+            assertEquals(it, parseSoundStream(it.storageKey, legacyAlarmStream = null))
+        }
+    }
+
+    @Test
+    fun `nothing stored plays on the notification stream`() {
+        assertEquals(SoundStream.Notification, parseSoundStream(null, legacyAlarmStream = null))
+    }
+
+    @Test
+    fun `an install that opted into the old alarm switch stays on the alarm stream`() {
+        assertEquals(SoundStream.Alarm, parseSoundStream(null, legacyAlarmStream = true))
+    }
+
+    @Test
+    fun `a stored stream wins over the old alarm switch`() {
+        assertEquals(SoundStream.Media, parseSoundStream("media", legacyAlarmStream = true))
+    }
 }

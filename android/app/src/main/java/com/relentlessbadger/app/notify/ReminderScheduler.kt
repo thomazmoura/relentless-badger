@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.db.OpenTaskEntity
 
 /**
@@ -31,12 +32,12 @@ interface ReminderScheduler {
 
     /**
      * [defaultWaitMinutes] backs the notification's one-tap Wait button; [sound]
-     * is what it rings with, at alarm volume when [alarmStream] is set.
+     * is what it rings with, on [stream].
      */
-    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean)
+    fun showReminder(task: OpenTaskEntity, defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream)
 
     /** Posts the reminder-shaped notification behind the Advanced settings button. */
-    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean)
+    fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream)
 }
 
 class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
@@ -69,13 +70,13 @@ class AlarmReminderScheduler(private val context: Context) : ReminderScheduler {
         task: OpenTaskEntity,
         defaultWaitMinutes: Int,
         sound: NotificationSound,
-        alarmStream: Boolean,
+        stream: SoundStream,
     ) {
-        Notifications.showReminder(context, task, defaultWaitMinutes, sound, alarmStream)
+        Notifications.showReminder(context, task, defaultWaitMinutes, sound, stream)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean) {
-        Notifications.showTestNotification(context, defaultWaitMinutes, sound, alarmStream)
+    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream) {
+        Notifications.showTestNotification(context, defaultWaitMinutes, sound, stream)
     }
 
     private fun reminderIntent(taskId: String): PendingIntent =

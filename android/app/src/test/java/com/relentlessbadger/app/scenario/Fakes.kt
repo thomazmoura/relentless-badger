@@ -7,6 +7,7 @@ import com.relentlessbadger.app.data.DEFAULT_NOTIFICATION_GAP_SECONDS
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.LoginResponse
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.parseQuietRange
 import com.relentlessbadger.app.data.Session
 import com.relentlessbadger.app.data.SettingsDto
@@ -245,14 +246,14 @@ class RecordingReminderScheduler : ReminderScheduler {
     /** The sound each test notification rang with. */
     val testNotificationSounds = mutableListOf<NotificationSound>()
 
-    /** Whether each test notification rang on the alarm stream. */
-    val testNotificationAlarmStreams = mutableListOf<Boolean>()
+    /** The stream each test notification rang on. */
+    val testNotificationStreams = mutableListOf<SoundStream>()
 
     data class ShownReminder(
         val task: OpenTaskEntity,
         val defaultWaitMinutes: Int,
         val sound: NotificationSound,
-        val alarmStream: Boolean,
+        val stream: SoundStream,
     )
 
     override fun canScheduleExact(): Boolean = true
@@ -274,15 +275,15 @@ class RecordingReminderScheduler : ReminderScheduler {
         task: OpenTaskEntity,
         defaultWaitMinutes: Int,
         sound: NotificationSound,
-        alarmStream: Boolean,
+        stream: SoundStream,
     ) {
-        shownReminders += ShownReminder(task, defaultWaitMinutes, sound, alarmStream)
+        shownReminders += ShownReminder(task, defaultWaitMinutes, sound, stream)
     }
 
-    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, alarmStream: Boolean) {
+    override fun showTestNotification(defaultWaitMinutes: Int, sound: NotificationSound, stream: SoundStream) {
         testNotifications += defaultWaitMinutes
         testNotificationSounds += sound
-        testNotificationAlarmStreams += alarmStream
+        testNotificationStreams += stream
     }
 }
 
@@ -301,7 +302,7 @@ class FakeSettingsStore : SettingsStore {
     var minNotificationGapSeconds = DEFAULT_NOTIFICATION_GAP_SECONDS
     var lastNotificationAtMillis: Long? = null
     var notificationSound: NotificationSound = NotificationSound.SystemDefault
-    var soundOnAlarmStream = false
+    var soundStream = SoundStream.Notification
     var dirty = false
     var baseUrl = "http://badger.test"
 
@@ -318,7 +319,7 @@ class FakeSettingsStore : SettingsStore {
         minNotificationGapSeconds = minNotificationGapSeconds,
         lastNotificationAtMillis = lastNotificationAtMillis,
         notificationSound = notificationSound,
-        soundOnAlarmStream = soundOnAlarmStream,
+        soundStream = soundStream,
     )
 
     override suspend fun saveBaseUrl(baseUrl: String) {
@@ -345,8 +346,8 @@ class FakeSettingsStore : SettingsStore {
         notificationSound = sound
     }
 
-    override suspend fun saveSoundOnAlarmStream(on: Boolean) {
-        soundOnAlarmStream = on
+    override suspend fun saveSoundStream(stream: SoundStream) {
+        soundStream = stream
     }
 
     override suspend fun markSettingsDirty() {

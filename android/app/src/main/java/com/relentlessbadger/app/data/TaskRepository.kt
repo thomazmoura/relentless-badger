@@ -387,7 +387,7 @@ class TaskRepository(
             task,
             session.defaultWaitMinutes,
             session.notificationSound,
-            session.soundOnAlarmStream,
+            session.soundStream,
         )
         settings.saveLastNotificationAt(now)
         val next = task.copy(
@@ -411,7 +411,7 @@ class TaskRepository(
         scheduler.showTestNotification(
             session.defaultWaitMinutes,
             session.notificationSound,
-            session.soundOnAlarmStream,
+            session.soundStream,
         )
     }
 
@@ -491,11 +491,11 @@ class TaskRepository(
     }
 
     /**
-     * Moves nags to the alarm stream (or back) from the next one on, so they
-     * ring even on vibrate. Local, like the sound it applies to.
+     * Moves nags to another audio stream from the next one on — alarm or media
+     * to ring even on vibrate. Local, like the sound it applies to.
      */
-    suspend fun updateSoundOnAlarmStream(on: Boolean) {
-        settings.saveSoundOnAlarmStream(on)
+    suspend fun updateSoundStream(stream: SoundStream) {
+        settings.saveSoundStream(stream)
     }
 
     /**

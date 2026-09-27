@@ -9,16 +9,21 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.IntentCompat
 import com.relentlessbadger.app.data.BUILT_IN_SOUNDS
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.label
 import com.relentlessbadger.app.data.parseNotificationSound
 import com.relentlessbadger.app.data.toStorageString
@@ -46,19 +52,20 @@ import com.relentlessbadger.app.notify.Notifications
  * it. The dialog's choice is applied on OK; a sound from the device picker is
  * applied straight away, since picking it there was already the decision.
  *
- * Below it, the opt-in to ring at alarm volume. Android-only by nature: a web
- * page can't choose the stream its notifications play on, so the PWA has no
+ * Below it, the stream the sound plays on. Android-only by nature: a web page
+ * can't choose the stream its notifications play on, so the PWA has no
  * counterpart to mirror.
  */
 @Composable
 fun NotificationSoundSetting(
     current: NotificationSound,
     onChosen: (NotificationSound) -> Unit,
-    alarmStream: Boolean,
-    onAlarmStreamChanged: (Boolean) -> Unit,
+    stream: SoundStream,
+    onStreamChosen: (SoundStream) -> Unit,
 ) {
     val context = LocalContext.current
     var dialogOpen by rememberSaveable { mutableStateOf(false) }
+    var streamMenuOpen by remember { mutableStateOf(false) }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -78,25 +85,45 @@ fun NotificationSoundSetting(
     )
 
     // Silent has nothing to play on any stream.
-    val canUseAlarmStream = current != NotificationSound.Silent
+    val canChooseStream = current != NotificationSound.Silent
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
     ) {
         Text(
-            "Play even on vibrate",
+            "Play as",
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
         )
-        Switch(
-            checked = alarmStream && canUseAlarmStream,
-            onCheckedChange = onAlarmStreamChanged,
-            enabled = canUseAlarmStream,
-        )
+        Box {
+            TextButton(onClick = { streamMenuOpen = true }, enabled = canChooseStream) {
+                Text(stream.label)
+                Icon(Icons.Filled.ArrowDropDown, contentDescription = null)
+            }
+            DropdownMenu(expanded = streamMenuOpen, onDismissRequest = { streamMenuOpen = false }) {
+                SoundStream.entries.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.label) },
+                        onClick = {
+                            streamMenuOpen = false
+                            onStreamChosen(option)
+                        },
+                    )
+                }
+            }
+        }
     }
     Text(
-        "Uses the alarm volume instead of the notification volume, so reminders " +
-            "sound even when the phone is on vibrate or silent.",
+        when (stream) {
+            SoundStream.Notification ->
+                "Follows the notification volume, so vibrate or silent mode mutes it."
+            SoundStream.Alarm ->
+                "Follows the alarm volume and sounds even on vibrate or silent. " +
+                    "Plays on the speaker even with headphones connected."
+            SoundStream.Media ->
+                "Follows the media volume and sounds even on vibrate or silent. " +
+                    "Stays in the headphones when they're connected."
+        },
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
@@ -105,7 +132,7 @@ fun NotificationSoundSetting(
         NotificationSoundDialog(
             context = context,
             current = current,
-            alarmStream = alarmStream,
+            stream = stream,
             onDismiss = { dialogOpen = false },
             onChosen = {
                 dialogOpen = false
@@ -119,14 +146,14 @@ fun NotificationSoundSetting(
 private fun NotificationSoundDialog(
     context: Context,
     current: NotificationSound,
-    alarmStream: Boolean,
+    stream: SoundStream,
     onDismiss: () -> Unit,
     onChosen: (NotificationSound) -> Unit,
 ) {
     // Stored as its string form, which is what makes a sealed type saveable.
     var selectedStored by rememberSaveable { mutableStateOf(current.toStorageString()) }
     val selected = parseNotificationSound(selectedStored)
-    val preview = remember(alarmStream) { SoundPreview(context, alarmStream) }
+    val preview = remember(stream) { SoundPreview(context, stream) }
     DisposableEffect(Unit) { onDispose { preview.stop() } }
 
     val devicePicker = rememberLauncherForActivityResult(
@@ -200,14 +227,14 @@ private fun NotificationSoundDialog(
  * Plays one option at a time; tapping the next cuts the last one off. Plays on
  * the stream the reminders will, so what the preview's volume suggests is true.
  */
-private class SoundPreview(private val context: Context, private val alarmStream: Boolean) {
+private class SoundPreview(private val context: Context, private val stream: SoundStream) {
     private var playing: Ringtone? = null
 
     fun play(sound: NotificationSound) {
         stop()
         val uri = Notifications.soundUri(context, sound) ?: return
         playing = RingtoneManager.getRingtone(context, uri)?.also {
-            it.audioAttributes = Notifications.audioAttributesFor(alarmStream)
+            it.audioAttributes = Notifications.audioAttributesFor(stream)
             it.play()
         }
     }

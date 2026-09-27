@@ -1,10 +1,10 @@
 package com.relentlessbadger.app.scenario
 
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.SettingsDto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationSoundScenarios : ScenarioTest() {
@@ -106,40 +106,53 @@ class NotificationSoundScenarios : ScenarioTest() {
 
         whenReminderFires(task.id)
 
-        assertFalse(alarms.shownReminders.single().alarmStream)
+        assertEquals(SoundStream.Notification, alarms.shownReminders.single().stream)
     }
 
     @Test
-    fun `opting in rings the next nag at alarm volume`() = scenario {
+    fun `choosing the alarm stream rings the next nag at alarm volume`() = scenario {
         givenLocalSettings(60, 15)
         givenNotificationSound(NotificationSound.BuiltIn("simple-01"))
         givenOffline()
         val task = whenTaskCreated("water plants")
         whenTimeAdvancesMinutes(60)
 
-        whenSoundOnAlarmStreamChosen(true)
+        whenSoundStreamChosen(SoundStream.Alarm)
         whenReminderFires(task.id)
 
         val shown = alarms.shownReminders.single()
         assertEquals(NotificationSound.BuiltIn("simple-01"), shown.sound)
-        assertTrue(shown.alarmStream)
+        assertEquals(SoundStream.Alarm, shown.stream)
+    }
+
+    @Test
+    fun `choosing the media stream rings the next nag at media volume`() = scenario {
+        givenLocalSettings(60, 15)
+        givenOffline()
+        val task = whenTaskCreated("water plants")
+        whenTimeAdvancesMinutes(60)
+
+        whenSoundStreamChosen(SoundStream.Media)
+        whenReminderFires(task.id)
+
+        assertEquals(SoundStream.Media, alarms.shownReminders.single().stream)
     }
 
     @Test
     fun `the test notification rings on the chosen stream`() = scenario {
-        givenSoundOnAlarmStream(true)
+        givenSoundStream(SoundStream.Media)
         givenOffline()
 
         whenTestNotificationRequested()
 
-        assertEquals(listOf(true), alarms.testNotificationAlarmStreams)
+        assertEquals(listOf(SoundStream.Media), alarms.testNotificationStreams)
     }
 
     @Test
-    fun `ringing at alarm volume stays on this device`() = scenario {
+    fun `the chosen stream stays on this device`() = scenario {
         givenOnline()
 
-        whenSoundOnAlarmStreamChosen(true)
+        whenSoundStreamChosen(SoundStream.Alarm)
         whenSyncRuns()
 
         assertFalse(settingsStore.isSettingsDirty())
@@ -147,12 +160,12 @@ class NotificationSoundScenarios : ScenarioTest() {
     }
 
     @Test
-    fun `a settings pull leaves the alarm volume opt-in alone`() = scenario {
-        givenSoundOnAlarmStream(true)
+    fun `a settings pull leaves the chosen stream alone`() = scenario {
+        givenSoundStream(SoundStream.Alarm)
         server.settings = SettingsDto(45, 20, listOf(120, 480), 1)
 
         whenSyncRuns()
 
-        assertTrue(settingsStore.current().soundOnAlarmStream)
+        assertEquals(SoundStream.Alarm, settingsStore.current().soundStream)
     }
 }

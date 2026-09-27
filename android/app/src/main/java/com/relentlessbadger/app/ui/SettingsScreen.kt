@@ -224,8 +224,8 @@ fun SettingsScreen(
             NotificationSoundSetting(
                 current = session.notificationSound,
                 onChosen = viewModel::updateNotificationSound,
-                alarmStream = session.soundOnAlarmStream,
-                onAlarmStreamChanged = viewModel::updateSoundOnAlarmStream,
+                stream = session.soundStream,
+                onStreamChosen = viewModel::updateSoundStream,
             )
 
             Spacer(Modifier.height(24.dp))

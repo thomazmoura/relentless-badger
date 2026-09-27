@@ -34,8 +34,8 @@ data class Session(
     val lastNotificationAtMillis: Long?,
     // What a nag sounds like here; local to the device, never synced.
     val notificationSound: NotificationSound = NotificationSound.SystemDefault,
-    // Whether that sound plays at alarm volume, so vibrate mode can't mute it.
-    val soundOnAlarmStream: Boolean = false,
+    // Which stream that sound plays on, and so which volume it follows.
+    val soundStream: SoundStream = SoundStream.Notification,
 ) {
     val isSignedIn: Boolean get() = token != null && baseUrl.isNotBlank()
 
@@ -80,10 +80,10 @@ interface SettingsStore {
     suspend fun saveNotificationSound(sound: NotificationSound)
 
     /**
-     * Whether nags ring on the alarm stream. Local like the sound itself: how
-     * loud a phone should be is a property of that phone.
+     * Which stream nags ring on. Local like the sound itself: how loud a phone
+     * should be is a property of that phone.
      */
-    suspend fun saveSoundOnAlarmStream(on: Boolean)
+    suspend fun saveSoundStream(stream: SoundStream)
     suspend fun markSettingsDirty()
     suspend fun clearSettingsDirty()
     suspend fun isSettingsDirty(): Boolean
@@ -104,7 +104,7 @@ class SessionStore(private val context: Context) : SettingsStore {
         val MIN_NOTIFICATION_GAP = intPreferencesKey("min_notification_gap_seconds")
         val LAST_NOTIFICATION_AT = longPreferencesKey("last_notification_at_millis")
         val NOTIFICATION_SOUND = stringPreferencesKey("notification_sound")
-        val SOUND_ON_ALARM_STREAM = booleanPreferencesKey("sound_on_alarm_stream")
+        val SOUND_STREAM = stringPreferencesKey("sound_stream")
         val SETTINGS_DIRTY = booleanPreferencesKey("settings_dirty")
 
         // Superseded by WAIT_MINUTES. Still read (never written) so an install
@@ -112,6 +112,9 @@ class SessionStore(private val context: Context) : SettingsStore {
         // instead of silently reverting to the defaults.
         val MEDIUM_WAIT = intPreferencesKey("medium_wait_minutes")
         val LONG_WAIT = intPreferencesKey("long_wait_minutes")
+
+        // Superseded by SOUND_STREAM; read so an alarm opt-in survives the upgrade.
+        val SOUND_ON_ALARM_STREAM = booleanPreferencesKey("sound_on_alarm_stream")
     }
 
     // Mirrors kept warm for the OkHttp auth interceptor, which cannot suspend.
@@ -137,7 +140,7 @@ class SessionStore(private val context: Context) : SettingsStore {
                 prefs[Keys.MIN_NOTIFICATION_GAP] ?: DEFAULT_NOTIFICATION_GAP_SECONDS,
             lastNotificationAtMillis = prefs[Keys.LAST_NOTIFICATION_AT],
             notificationSound = parseNotificationSound(prefs[Keys.NOTIFICATION_SOUND]),
-            soundOnAlarmStream = prefs[Keys.SOUND_ON_ALARM_STREAM] ?: false,
+            soundStream = parseSoundStream(prefs[Keys.SOUND_STREAM], prefs[Keys.SOUND_ON_ALARM_STREAM]),
         ).also {
             cachedToken = it.token
             cachedBaseUrl = it.baseUrl
@@ -193,8 +196,8 @@ class SessionStore(private val context: Context) : SettingsStore {
         context.dataStore.edit { it[Keys.NOTIFICATION_SOUND] = sound.toStorageString() }
     }
 
-    override suspend fun saveSoundOnAlarmStream(on: Boolean) {
-        context.dataStore.edit { it[Keys.SOUND_ON_ALARM_STREAM] = on }
+    override suspend fun saveSoundStream(stream: SoundStream) {
+        context.dataStore.edit { it[Keys.SOUND_STREAM] = stream.storageKey }
     }
 
     override suspend fun markSettingsDirty() {

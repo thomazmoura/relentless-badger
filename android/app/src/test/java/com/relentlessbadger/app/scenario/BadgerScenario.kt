@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.data.TaskDto
@@ -112,11 +113,11 @@ class BadgerScenario {
     suspend fun whenNotificationSoundChosen(sound: NotificationSound) =
         repository.updateNotificationSound(sound)
 
-    suspend fun givenSoundOnAlarmStream(on: Boolean) =
-        repository.updateSoundOnAlarmStream(on)
+    suspend fun givenSoundStream(stream: SoundStream) =
+        repository.updateSoundStream(stream)
 
-    suspend fun whenSoundOnAlarmStreamChosen(on: Boolean) =
-        repository.updateSoundOnAlarmStream(on)
+    suspend fun whenSoundStreamChosen(stream: SoundStream) =
+        repository.updateSoundStream(stream)
 
     /** A task known to both sides with no pending local changes. */
     suspend fun givenSyncedTask(title: String): OpenTaskEntity {

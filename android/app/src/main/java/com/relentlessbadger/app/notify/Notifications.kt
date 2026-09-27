@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import com.relentlessbadger.app.MainActivity
 import com.relentlessbadger.app.R
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.db.OpenTaskEntity
 import com.relentlessbadger.app.ui.formatDuration
 
@@ -42,15 +43,17 @@ object Notifications {
      * it, so changing the sound clears the drawer; the nags return on their next
      * repeat, which is a fair price for a setting touched once in a blue moon.
      *
-     * The audio usage is just as fixed, so [alarmStream] is part of the id too.
-     * An alarm-usage sound follows the alarm volume rather than the ringer, which
-     * is what lets it ring on vibrate — and, on most builds, through Do Not
-     * Disturb whenever alarms are allowed. The system default has to name its
-     * sound explicitly there, since leaving it unset means notification usage.
+     * The audio usage is just as fixed, so [stream] is part of the id too. Alarm
+     * and media usage follow their own volume rather than the ringer, which is
+     * what lets them ring on vibrate; alarms also go to the speaker when
+     * headphones are in, and on most builds through Do Not Disturb whenever
+     * alarms are allowed. The system default has to name its sound explicitly
+     * off the notification stream, since leaving it unset means notification usage.
      */
-    fun ensureChannel(context: Context, sound: NotificationSound, alarmStream: Boolean): String {
-        val onAlarm = alarmStream && sound != NotificationSound.Silent
-        val id = channelIdFor(sound, onAlarm)
+    fun ensureChannel(context: Context, sound: NotificationSound, stream: SoundStream): String {
+        // Silent has nothing to play on any stream.
+        val effective = if (sound == NotificationSound.Silent) SoundStream.Notification else stream
+        val id = channelIdFor(sound, effective)
         val manager = context.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(id) == null) {
             val channel = NotificationChannel(
@@ -59,8 +62,8 @@ object Notifications {
                 NotificationManager.IMPORTANCE_HIGH,
             ).apply {
                 description = context.getString(R.string.notification_channel_description)
-                if (onAlarm || sound != NotificationSound.SystemDefault) {
-                    setSound(soundUri(context, sound), audioAttributesFor(onAlarm))
+                if (effective != SoundStream.Notification || sound != NotificationSound.SystemDefault) {
+                    setSound(soundUri(context, sound), audioAttributesFor(effective))
                 }
             }
             manager.createNotificationChannel(channel)
@@ -72,13 +75,19 @@ object Notifications {
     }
 
     /** Shared with the settings preview, so it plays on the stream the channel will. */
-    fun audioAttributesFor(alarmStream: Boolean): AudioAttributes = AudioAttributes.Builder()
-        .setUsage(if (alarmStream) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION)
+    fun audioAttributesFor(stream: SoundStream): AudioAttributes = AudioAttributes.Builder()
+        .setUsage(
+            when (stream) {
+                SoundStream.Notification -> AudioAttributes.USAGE_NOTIFICATION
+                SoundStream.Alarm -> AudioAttributes.USAGE_ALARM
+                SoundStream.Media -> AudioAttributes.USAGE_MEDIA
+            },
+        )
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
-    private fun channelIdFor(sound: NotificationSound, alarmStream: Boolean): String {
-        val base = if (alarmStream) "${CHANNEL_ID}_alarm" else CHANNEL_ID
+    private fun channelIdFor(sound: NotificationSound, stream: SoundStream): String {
+        val base = if (stream == SoundStream.Notification) CHANNEL_ID else "${CHANNEL_ID}_${stream.storageKey}"
         return when (sound) {
             NotificationSound.SystemDefault -> base
             NotificationSound.Silent -> "${base}_silent"
@@ -120,7 +129,7 @@ object Notifications {
         task: OpenTaskEntity,
         defaultWaitMinutes: Int,
         sound: NotificationSound,
-        alarmStream: Boolean,
+        stream: SoundStream,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
@@ -146,7 +155,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, alarmStream))
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, stream))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText(task.title)
@@ -181,7 +190,7 @@ object Notifications {
         context: Context,
         defaultWaitMinutes: Int,
         sound: NotificationSound,
-        alarmStream: Boolean,
+        stream: SoundStream,
     ) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
@@ -192,7 +201,7 @@ object Notifications {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, alarmStream))
+        val notification = NotificationCompat.Builder(context, ensureChannel(context, sound, stream))
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
             .setContentText("Test notification \u2014 reminders are working")

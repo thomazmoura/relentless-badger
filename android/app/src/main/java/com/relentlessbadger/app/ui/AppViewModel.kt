@@ -17,6 +17,7 @@ import com.relentlessbadger.app.auth.GoogleSignIn
 import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.LoginRequest
 import com.relentlessbadger.app.data.NotificationSound
+import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.SettingsDto
@@ -343,9 +344,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     /** Applied at once, like the sound it goes with. */
-    fun updateSoundOnAlarmStream(on: Boolean) {
+    fun updateSoundStream(stream: SoundStream) {
         viewModelScope.launch {
-            container.repository.updateSoundOnAlarmStream(on)
+            container.repository.updateSoundStream(stream)
         }
     }
 
