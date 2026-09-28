@@ -159,10 +159,11 @@ Multiple open tabs elect a single leader, so a reminder is never shown twice.
 - `https://<pi>.ts.net/badger` — the web app
 - `https://<pi>.ts.net/badger-api` — the API (the Android app's server URL)
 
-The certificate comes from Tailscale, so the server is reachable (and trusted) from your tailnet devices only. Everything runs from your dev machine over ssh. The images are built locally for `arm64` (both Dockerfiles cross-compile, so no emulation is involved) and streamed to the Pi, which needs no toolchain and no registry.
+The certificate comes from Tailscale, so HTTPS is trusted from your tailnet devices only. Devices on the Pi's local network can also open `http://<pi LAN IP>/badger` and `/badger-api` over plain HTTP. Plain HTTP to the `ts.net` name still redirects to HTTPS. The HTTP variant isn't a secure context, so it gets no service worker (no offline mode and no alarms) and no Google sign-in. The full app only runs on the `ts.net` name. Everything runs from your dev machine over ssh. The images are built locally for `arm64` (both Dockerfiles cross-compile, so no emulation is involved) and streamed to the Pi, which needs no toolchain and no registry.
 
 ```
 tailnet ──443──▶ gateway (nginx, ~/gateway)
+LAN     ───80──▶   (same routes, plain HTTP; *.ts.net on 80 → 301 to 443)
                  ├─ /badger/      → relentlessbadger-web  (static PWA)
                  └─ /badger-api/  → relentlessbadger-api  → relentlessbadger-db (volume relentlessbadger_pgdata)
 ```

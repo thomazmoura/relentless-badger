@@ -1,5 +1,6 @@
 # Production deployment on a Raspberry Pi: PostgreSQL, the API and the web PWA, published
-# over HTTPS by the gateway in deploy/gateway (https://<pi>/badger and /badger-api).
+# over HTTPS by the gateway in deploy/gateway (https://<pi>/badger and /badger-api), and over
+# plain HTTP on the Pi's LAN address.
 # deploy/publish.sh builds the images, ships them and runs this file; see the README.
 #
 # The project name is pinned so the data volume is always relentlessbadger_pgdata, whatever

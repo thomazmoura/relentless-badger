@@ -117,7 +117,9 @@ else
 fi
 
 log "Starting $tag"
-pi "cd $q_pi_dir && docker compose -f docker-compose.prod.yml up -d --no-build --pull never --remove-orphans"
+# "missing" rather than "never": our images were just loaded, but a fresh Pi still has to
+# fetch Postgres from Docker Hub.
+pi "cd $q_pi_dir && docker compose -f docker-compose.prod.yml up -d --no-build --pull missing --remove-orphans"
 
 # --- verify ----------------------------------------------------------------------------
 log "Waiting for $BASE_URL/badger-api/health (migrations run first)"
