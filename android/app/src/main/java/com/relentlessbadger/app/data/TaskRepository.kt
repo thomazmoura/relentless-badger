@@ -291,8 +291,15 @@ class TaskRepository(
      * clears the current reminder. Purely local: the new fire time lives in Room
      * and is preserved across syncs, so the server never needs to know.
      */
-    suspend fun snoozeTask(id: String, minutes: Int) =
-        snoozeUntil(id, timeSource.now() + minutes * 60_000L)
+    suspend fun snoozeTask(id: String, minutes: Int) = snoozeFor(id, minutes * 60_000L)
+
+    /**
+     * [snoozeTask] for a wait the user typed rather than picked, which may carry
+     * seconds. Measured from the moment it commits, not from when the user
+     * started typing.
+     */
+    suspend fun snoozeFor(id: String, durationMillis: Long) =
+        snoozeUntil(id, timeSource.now() + durationMillis)
 
     /**
      * Silences the task until an exact moment picked by the user, with the same

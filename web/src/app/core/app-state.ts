@@ -307,6 +307,12 @@ export class AppState {
     this.resetTaskList();
   }
 
+  async snoozeFor(id: string, durationMillis: number): Promise<void> {
+    this.waitPickerTask.set(null);
+    await this.runBusy(() => this.repository.snoozeFor(id, durationMillis));
+    this.resetTaskList();
+  }
+
   async snoozeUntil(id: string, atMillis: number): Promise<void> {
     this.waitPickerTask.set(null);
     this.exactWaitTask.set(null);

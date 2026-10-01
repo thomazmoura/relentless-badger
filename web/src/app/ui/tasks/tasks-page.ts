@@ -29,6 +29,7 @@ import { OpenTask } from '../../core/domain/models';
 import { plusDays, startOfDay } from '../../core/domain/time';
 import { DateTimePickerDialog } from '../dialogs/date-time-picker-dialog';
 import { EditScheduleDialog, EditScheduleResult } from '../dialogs/edit-schedule-dialog';
+import { WaitDurationDialog } from '../dialogs/wait-duration-dialog';
 import { WaitOptionsDialog, WaitOptionsResult } from '../dialogs/wait-options-dialog';
 import { QuickAdd } from './quick-add';
 import { RowMovementGuard, rowKeys } from './row-movement-guard';
@@ -124,6 +125,7 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
                   (donePreviously)="donePreviously(task)"
                   (cancelTask)="state.cancelTask(task.id)"
                   (snooze)="state.snoozeTask(task.id, $event)"
+                  (pickDurationWait)="pickDurationWait(task)"
                   (pickExactWait)="pickExactWait(task)"
                 />
                 <mat-divider />
@@ -361,6 +363,14 @@ export class TasksPage {
     );
   }
 
+  async pickDurationWait(task: OpenTask): Promise<void> {
+    const picked = await this.dialog
+      .open(WaitDurationDialog, { data: { title: task.title } })
+      .afterClosed()
+      .toPromise();
+    if (typeof picked === 'number') await this.state.snoozeFor(task.id, picked);
+  }
+
   async pickExactWait(task: OpenTask): Promise<void> {
     const picked = await this.dialog
       .open(DateTimePickerDialog, { data: { title: task.title, initialMillis: null } })
@@ -399,6 +409,8 @@ export class TasksPage {
       .toPromise()) as WaitOptionsResult | undefined;
     if (typeof result === 'number') {
       await this.state.snoozeTask(task.id, result);
+    } else if (result === 'duration') {
+      await this.pickDurationWait(task);
     } else if (result === 'pick') {
       await this.pickExactWait(task);
     }

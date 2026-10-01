@@ -53,6 +53,23 @@ class SnoozeAndReminderScenarios : ScenarioTest() {
     }
 
     @Test
+    fun `snoozing for a typed wait with seconds parks the nag exactly that far from now`() = scenario {
+        givenOffline()
+        val task = whenTaskCreated("water plants")
+        val wait = 15 * MINUTE + 45_000L
+
+        whenSnoozedFor(task.id, wait)
+
+        val snoozed = localTask(task.id)
+        assertEquals(clock.now() + wait, snoozed.nextFireAtMillis)
+        assertEquals(task.firstWarningAtMillis, snoozed.firstWarningAtMillis)
+        assertEquals(task.repeatIntervalMinutes, snoozed.repeatIntervalMinutes)
+        thenAlarmScheduledAt(task.id, clock.now() + wait)
+        assertTrue(alarms.dismissed.contains(task.id))
+        thenNothingPushed()
+    }
+
+    @Test
     fun `snoozing until a time in the past is ignored rather than firing instantly`() = scenario {
         givenOffline()
         val task = whenTaskCreated("water plants")

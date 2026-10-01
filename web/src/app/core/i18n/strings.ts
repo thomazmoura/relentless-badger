@@ -124,6 +124,13 @@ export function stringsFor(language: Language) {
     removeSuggestion: (title: string) =>
       t(`Remove "${title}" from suggestions`, `Remover "${title}" das sugestões`),
     waitFor: (duration: string) => t(`Wait ${duration}`, `Esperar ${duration}`),
+    waitForDuration: t('Wait for…', 'Esperar por…'),
+    waitDurationHint: t('e.g. 27m or 15m 45s', 'ex.: 27m ou 15m 45s'),
+    waitDurationInvalid: t(
+      'Use hours, minutes and seconds, like 1h 20m',
+      'Use horas, minutos e segundos, como 1h 20m',
+    ),
+    nextNagAt: (at: string) => t(`Next nag at ${at}`, `Próximo aviso em ${at}`),
     pickDateTime: t('Pick a date & time…', 'Escolher data e hora…'),
     starts: (at: string) => t(`starts ${at}`, `começa ${at}`),
     nextNag: (relative: string, intervalMinutes: number) =>

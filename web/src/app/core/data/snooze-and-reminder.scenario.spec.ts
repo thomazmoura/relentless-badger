@@ -54,6 +54,22 @@ describe('snoozing and reminders', () => {
     badger.thenNothingPushed();
   });
 
+  it('snoozing for a typed wait with seconds parks the nag exactly that far from now', async () => {
+    badger.givenOffline();
+    const task = await badger.whenTaskCreated('water plants');
+    const wait = 15 * MINUTE + 45_000;
+
+    await badger.whenSnoozedFor(task.id, wait);
+
+    const snoozed = await badger.localTask(task.id);
+    expect(snoozed.nextFireAtMillis).toBe(badger.clock.now() + wait);
+    expect(snoozed.firstWarningAtMillis).toBe(task.firstWarningAtMillis);
+    expect(snoozed.repeatIntervalMinutes).toBe(task.repeatIntervalMinutes);
+    badger.thenAlarmScheduledAt(task.id, badger.clock.now() + wait);
+    expect(badger.alarms.dismissed).toContain(task.id);
+    badger.thenNothingPushed();
+  });
+
   it('snoozing until a time in the past is ignored rather than firing instantly', async () => {
     badger.givenOffline();
     const task = await badger.whenTaskCreated('water plants');

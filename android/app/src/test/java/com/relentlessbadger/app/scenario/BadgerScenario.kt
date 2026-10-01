@@ -169,6 +169,8 @@ class BadgerScenario {
 
     suspend fun whenSnoozedUntil(id: String, atMillis: Long) = repository.snoozeUntil(id, atMillis)
 
+    suspend fun whenSnoozedFor(id: String, durationMillis: Long) = repository.snoozeFor(id, durationMillis)
+
     suspend fun whenReminderFires(id: String) = repository.onReminderFired(id)
 
     suspend fun whenTestNotificationRequested() = repository.showTestNotification()

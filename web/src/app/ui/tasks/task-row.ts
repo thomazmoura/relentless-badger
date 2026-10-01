@@ -51,6 +51,10 @@ import { ROW_LOCKED_BUTTON_ALPHA, ROW_LOCK_FADE_MILLIS } from './row-movement-gu
               <span>{{ s().waitFor(formatDuration(minutes, s())) }}</span>
             </button>
           }
+          <button mat-menu-item (click)="pickDurationWait.emit()">
+            <mat-icon>timer</mat-icon>
+            <span>{{ s().waitForDuration }}</span>
+          </button>
           <button mat-menu-item (click)="pickExactWait.emit()">
             <mat-icon>schedule</mat-icon>
             <span>{{ s().pickDateTime }}</span>
@@ -165,6 +169,7 @@ export class TaskRow {
   readonly cancelTask = output<void>();
   readonly advance = output<void>();
   readonly snooze = output<number>();
+  readonly pickDurationWait = output<void>();
   readonly pickExactWait = output<void>();
 
   readonly formatDuration = formatDuration;

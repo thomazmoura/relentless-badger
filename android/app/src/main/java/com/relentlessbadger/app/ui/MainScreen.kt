@@ -21,6 +21,8 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -40,6 +42,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Snooze
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
@@ -80,9 +83,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.relentlessbadger.app.data.DEFAULT_WAIT_MINUTES
@@ -90,6 +96,7 @@ import com.relentlessbadger.app.data.PAUSE_OPTIONS_MINUTES
 import com.relentlessbadger.app.data.QuietRange
 import com.relentlessbadger.app.data.deferPastPause
 import com.relentlessbadger.app.data.deferPastQuietHours
+import com.relentlessbadger.app.data.parseWaitDuration
 import com.relentlessbadger.app.data.Recurrence
 import com.relentlessbadger.app.data.RecurUnit
 import com.relentlessbadger.app.data.recurrence
@@ -386,6 +393,10 @@ fun MainScreen(
                 viewModel.waitPickerTask = null
                 viewModel.snoozeTask(task.id, minutes)
             },
+            onPickDuration = {
+                viewModel.waitPickerTask = null
+                viewModel.durationWaitTask = task
+            },
             onPickDateTime = {
                 viewModel.waitPickerTask = null
                 viewModel.exactWaitTask = task
@@ -400,6 +411,19 @@ fun MainScreen(
             onPicked = { atMillis ->
                 pausePickerOpen = false
                 viewModel.pauseNotificationsUntil(atMillis)
+            },
+        )
+    }
+
+    viewModel.durationWaitTask?.let { task ->
+        WaitDurationDialog(
+            title = task.title,
+            nowMillis = nowMillis,
+            use24Hour = use24Hour,
+            onDismiss = { viewModel.durationWaitTask = null },
+            onConfirm = { durationMillis ->
+                viewModel.durationWaitTask = null
+                viewModel.snoozeFor(task.id, durationMillis)
             },
         )
     }
@@ -674,8 +698,8 @@ private fun QuickAdd(viewModel: AppViewModel, use24Hour: Boolean) {
 }
 
 /**
- * Every configured wait plus an escape hatch to an exact date and time. Both
- * defer the task locally without touching its real schedule. The anchorless
+ * Every configured wait plus escape hatches to a typed duration and to an exact
+ * date and time. All defer the task locally without touching its real schedule. The anchorless
  * counterpart of the dropdown on a task row's snooze button.
  */
 @Composable
@@ -684,6 +708,7 @@ private fun WaitOptionsDialog(
     waitMinutes: List<Int>,
     onDismiss: () -> Unit,
     onSnooze: (Int) -> Unit,
+    onPickDuration: () -> Unit,
     onPickDateTime: () -> Unit,
 ) {
     val s = LocalStrings.current
@@ -707,6 +732,11 @@ private fun WaitOptionsDialog(
                 }
                 HorizontalDivider()
                 ListItem(
+                    headlineContent = { Text(s.waitForDuration) },
+                    leadingContent = { Icon(Icons.Filled.Timer, contentDescription = null) },
+                    modifier = Modifier.clickable(onClick = onPickDuration),
+                )
+                ListItem(
                     headlineContent = { Text(s.pickDateTime) },
                     leadingContent = { Icon(Icons.Filled.Schedule, contentDescription = null) },
                     modifier = Modifier.clickable(onClick = onPickDateTime),
@@ -714,6 +744,66 @@ private fun WaitOptionsDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismiss) { Text(s.cancel) }
+        },
+    )
+}
+
+/**
+ * Snoozes for a typed wait such as "27m" or "15m 45s" — the "in a while" the
+ * configured waits don't cover, without making the user work out the clock time
+ * themselves. The landing moment is previewed so a typo shows before it commits.
+ */
+@Composable
+private fun WaitDurationDialog(
+    title: String,
+    nowMillis: Long,
+    use24Hour: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Long) -> Unit,
+) {
+    val s = LocalStrings.current
+    var text by remember { mutableStateOf("") }
+    val durationMillis = parseWaitDuration(text)
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                title,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text(s.waitForDuration) },
+                placeholder = { Text(s.waitDurationHint) },
+                singleLine = true,
+                isError = text.isNotBlank() && durationMillis == null,
+                supportingText = {
+                    when {
+                        durationMillis != null -> Text(
+                            s.nextNagAt(formatDateTime(nowMillis + durationMillis, use24Hour, s)),
+                        )
+                        text.isNotBlank() -> Text(s.waitDurationInvalid)
+                    }
+                },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { durationMillis?.let(onConfirm) }),
+                modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            )
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { durationMillis?.let(onConfirm) },
+                enabled = durationMillis != null,
+            ) { Text(s.snooze) }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) { Text(s.cancel) }
         },
     )
@@ -830,6 +920,7 @@ private fun LazyListScope.taskRows(
                 onDonePreviously = { viewModel.donePreviouslyTask = task },
                 onCancel = { viewModel.cancelTask(task.id) },
                 onSnooze = { minutes -> viewModel.snoozeTask(task.id, minutes) },
+                onPickDuration = { viewModel.durationWaitTask = task },
                 onPickDateTime = { viewModel.exactWaitTask = task },
                 // Only a task that has not started yet can be brought forward.
                 onAdvance = { if (scheduled) viewModel.advanceTask(task.id) },
@@ -905,6 +996,7 @@ private fun TaskRow(
     canAct: () -> Boolean,
     tapsLocked: Boolean,
     onSnooze: (Int) -> Unit,
+    onPickDuration: () -> Unit,
     onPickDateTime: () -> Unit,
     onAdvance: () -> Unit,
     onEdit: () -> Unit,
@@ -984,6 +1076,14 @@ private fun TaskRow(
                         )
                     }
                     HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(s.waitForDuration) },
+                        leadingIcon = { Icon(Icons.Filled.Timer, contentDescription = null) },
+                        onClick = {
+                            menuExpanded = false
+                            onPickDuration()
+                        },
+                    )
                     DropdownMenuItem(
                         text = { Text(s.pickDateTime) },
                         leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },

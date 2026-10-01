@@ -375,7 +375,16 @@ export class TaskRepository {
    * know.
    */
   async snoozeTask(id: string, minutes: number): Promise<void> {
-    await this.snoozeUntil(id, this.timeSource.now() + minutes * MINUTE_MILLIS);
+    await this.snoozeFor(id, minutes * MINUTE_MILLIS);
+  }
+
+  /**
+   * [snoozeTask] for a wait the user typed rather than picked, which may carry
+   * seconds. Measured from the moment it commits, not from when the user started
+   * typing.
+   */
+  async snoozeFor(id: string, durationMillis: number): Promise<void> {
+    await this.snoozeUntil(id, this.timeSource.now() + durationMillis);
   }
 
   /**

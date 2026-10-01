@@ -166,6 +166,10 @@ export class BadgerScenario {
     return this.repository.snoozeUntil(id, atMillis);
   }
 
+  whenSnoozedFor(id: string, durationMillis: number): Promise<void> {
+    return this.repository.snoozeFor(id, durationMillis);
+  }
+
   whenReminderFires(id: string): Promise<void> {
     return this.repository.onReminderFired(id);
   }

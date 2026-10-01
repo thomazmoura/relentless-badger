@@ -128,6 +128,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      */
     var exactWaitTask by mutableStateOf<OpenTaskEntity?>(null)
 
+    /** Task waiting on a typed duration; hosted here for the same reason as [exactWaitTask]. */
+    var durationWaitTask by mutableStateOf<OpenTaskEntity?>(null)
+
     /**
      * Task being closed as done at some earlier moment. Hosted here for the same
      * reason as [exactWaitTask]: the picker outlives its row.
@@ -297,6 +300,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun snoozeTask(id: String, minutes: Int) {
         viewModelScope.launch {
             container.repository.snoozeTask(id, minutes)
+        }
+    }
+
+    fun snoozeFor(id: String, durationMillis: Long) {
+        viewModelScope.launch {
+            container.repository.snoozeFor(id, durationMillis)
         }
     }
 

@@ -138,6 +138,13 @@ class Strings private constructor(val language: Language) {
     fun removeSuggestion(title: String) =
         t("Remove \"$title\" from suggestions", "Remover \"$title\" das sugestões")
     fun waitFor(duration: String) = t("Wait $duration", "Esperar $duration")
+    val waitForDuration get() = t("Wait for…", "Esperar por…")
+    val waitDurationHint get() = t("e.g. 27m or 15m 45s", "ex.: 27m ou 15m 45s")
+    val waitDurationInvalid get() = t(
+        "Use hours, minutes and seconds, like 1h 20m",
+        "Use horas, minutos e segundos, como 1h 20m",
+    )
+    fun nextNagAt(at: String) = t("Next nag at $at", "Próximo aviso em $at")
     val pickDateTime get() = t("Pick a date & time…", "Escolher data e hora…")
     fun starts(at: String) = t("starts $at", "começa $at")
     fun nextNag(relative: String, intervalMinutes: Int) = t(

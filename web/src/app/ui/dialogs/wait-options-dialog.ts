@@ -12,8 +12,11 @@ export interface WaitOptionsData {
   readonly waitMinutes: readonly number[];
 }
 
-/** Closing with a number snoozes by that many minutes; 'pick' opens the exact-time picker. */
-export type WaitOptionsResult = number | 'pick';
+/**
+ * Closing with a number snoozes by that many minutes; 'duration' opens the typed
+ * wait, 'pick' the exact-time picker.
+ */
+export type WaitOptionsResult = number | 'duration' | 'pick';
 
 /**
  * The anchorless twin of the snooze menu on a task row: same options, shown as
@@ -34,6 +37,10 @@ export type WaitOptionsResult = number | 'pick';
           </button>
         }
         <mat-divider />
+        <button mat-list-item (click)="close('duration')">
+          <mat-icon matListItemIcon>timer</mat-icon>
+          <span matListItemTitle>{{ s().waitForDuration }}</span>
+        </button>
         <button mat-list-item (click)="close('pick')">
           <mat-icon matListItemIcon>schedule</mat-icon>
           <span matListItemTitle>{{ s().pickDateTime }}</span>
