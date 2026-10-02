@@ -141,6 +141,59 @@ public class ApiTests : IClassFixture<TestAppFactory>
     }
 
     [Fact]
+    public async Task Retiming_a_completion_moves_it_and_keeps_how_it_was_closed()
+    {
+        var client = await LoginAsync(sub: "retime-sub");
+        var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("done last night")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+        (await client.PostAsJsonAsync(
+            $"/tasks/{task!.Id}/complete",
+            new CompleteTaskRequest(new DateTime(2026, 7, 21, 8, 0, 0, DateTimeKind.Utc))))
+            .EnsureSuccessStatusCode();
+
+        var movedTo = new DateTime(2026, 7, 20, 21, 30, 0, DateTimeKind.Utc);
+        (await client.PutAsJsonAsync($"/tasks/{task.Id}/completed-at", new RetimeCompletionRequest(movedTo)))
+            .EnsureSuccessStatusCode();
+
+        var done = await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=done") ?? [];
+        var after = done.Single(t => t.Id == task.Id);
+        Assert.Equal(movedTo, DateTime.SpecifyKind(after.CompletedAt!.Value, DateTimeKind.Utc));
+        Assert.False(after.Cancelled);
+    }
+
+    [Fact]
+    public async Task Retiming_an_open_task_is_a_conflict()
+    {
+        var client = await LoginAsync(sub: "retime-open-sub");
+        var task = await (await client.PostAsJsonAsync("/tasks", new CreateTaskRequest("still open")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+
+        var response = await client.PutAsJsonAsync(
+            $"/tasks/{task!.Id}/completed-at", new RetimeCompletionRequest(DateTime.UtcNow));
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Contains(
+            await client.GetFromJsonAsync<List<TaskDto>>("/tasks?status=open") ?? [],
+            t => t.Id == task.Id);
+    }
+
+    [Fact]
+    public async Task Retiming_another_users_completion_is_not_found()
+    {
+        var owner = await LoginAsync(sub: "retime-owner-sub", email: "owner@example.com");
+        var task = await (await owner.PostAsJsonAsync("/tasks", new CreateTaskRequest("mine")))
+            .Content.ReadFromJsonAsync<TaskDto>();
+        (await owner.PostAsJsonAsync($"/tasks/{task!.Id}/complete", new CompleteTaskRequest()))
+            .EnsureSuccessStatusCode();
+
+        var other = await LoginAsync(sub: "retime-other-sub", email: "other@example.com");
+        var response = await other.PutAsJsonAsync(
+            $"/tasks/{task.Id}/completed-at", new RetimeCompletionRequest(DateTime.UtcNow));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Reopening_a_closed_task_puts_it_back_on_the_open_list()
     {
         var client = await LoginAsync(sub: "reopen-sub");

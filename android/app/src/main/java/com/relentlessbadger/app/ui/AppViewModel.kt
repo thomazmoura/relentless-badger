@@ -14,7 +14,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.relentlessbadger.app.AppContainer
 import com.relentlessbadger.app.BuildConfig
 import com.relentlessbadger.app.auth.GoogleSignIn
+import com.relentlessbadger.app.data.BatchConclusion
 import com.relentlessbadger.app.data.ConcludedTask
+import com.relentlessbadger.app.data.DoneEarlierCandidates
 import com.relentlessbadger.app.data.InvalidServerUrlException
 import com.relentlessbadger.app.data.LanguagePreference
 import com.relentlessbadger.app.data.LoginRequest
@@ -150,6 +152,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /** Task just concluded, awaiting its undo snackbar. */
     var concludedTask by mutableStateOf<ConcludedTask?>(null)
 
+    /** Several things just marked done at one earlier moment, awaiting their undo snackbar. */
+    var batchConclusion by mutableStateOf<BatchConclusion?>(null)
+
+    /**
+     * The "mark done earlier" flow: picking the moment, then ticking what was
+     * done at it. Hosted here for the same reason as [exactWaitTask].
+     */
+    var doneEarlierPicking by mutableStateOf(false)
+    var doneEarlierAtMillis by mutableStateOf<Long?>(null)
+        private set
+    var doneEarlierCandidates by mutableStateOf<DoneEarlierCandidates?>(null)
+        private set
+
     /**
      * Bumped when a task is added, scrolling the list back to the top. A new task
      * fires soonest, so it sorts to the very top — off-screen, and easy to think
@@ -254,6 +269,33 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun cancelTask(id: String) {
         viewModelScope.launch {
             concludedTask = container.repository.cancelTask(id)
+        }
+    }
+
+    fun pickDoneEarlierAt(atMillis: Long) {
+        doneEarlierPicking = false
+        viewModelScope.launch {
+            doneEarlierCandidates = container.repository.doneEarlierCandidates(atMillis)
+            doneEarlierAtMillis = atMillis
+        }
+    }
+
+    fun closeDoneEarlier() {
+        doneEarlierAtMillis = null
+        doneEarlierCandidates = null
+    }
+
+    fun markDoneEarlier(openIds: Collection<String>, completedIds: Collection<String>) {
+        val atMillis = doneEarlierAtMillis ?: return
+        closeDoneEarlier()
+        viewModelScope.launch {
+            batchConclusion = container.repository.completeTasksAt(atMillis, openIds, completedIds)
+        }
+    }
+
+    fun undoBatchConclusion(batch: BatchConclusion) {
+        viewModelScope.launch {
+            container.repository.undoBatchConclusion(batch)
         }
     }
 

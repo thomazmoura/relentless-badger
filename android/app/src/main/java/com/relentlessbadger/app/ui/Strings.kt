@@ -158,6 +158,28 @@ class Strings private constructor(val language: Language) {
     val donePreviously get() = t("Done previously", "Feita antes")
     val cancelTask get() = t("Cancel task", "Cancelar tarefa")
 
+    // --- Done earlier ---------------------------------------------------------
+
+    val doneEarlier get() = t("Mark done earlier…", "Marcar feitas antes…")
+    fun doneEarlierAt(at: String) = t("Done at $at", "Feitas em $at")
+    val changeMoment get() = t("Change", "Alterar")
+    val doneEarlierOpen get() = t("Open", "Abertas")
+    val doneEarlierAlreadyDone get() = t(
+        "Already done — move to this time",
+        "Já feitas — mover para este horário",
+    )
+    fun doneAtTime(at: String) = t("done $at", "feita $at")
+    fun markNDone(n: Int) = t("Mark $n done", "Marcar $n")
+    val nothingToMark get() = t(
+        "Nothing open or recently done around then.",
+        "Nada aberto ou feito recentemente nessa época.",
+    )
+    fun batchConcluded(n: Int) = if (n == 1) {
+        t("Marked 1 done", "1 marcada como feita")
+    } else {
+        t("Marked $n done", "$n marcadas como feitas")
+    }
+
     // --- Schedule dialogs -----------------------------------------------------
 
     val repeatTitle get() = t("Repeat", "Repetir")

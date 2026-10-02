@@ -125,7 +125,7 @@ interface OpenTaskDao {
 
 @Database(
     entities = [OpenTaskEntity::class, TitleHistoryEntity::class, CompletedTaskEntity::class],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class BadgerDb : RoomDatabase() {
@@ -186,6 +186,13 @@ abstract class BadgerDb : RoomDatabase() {
                 // Nothing was undone before a conclusion could be undone.
                 db.execSQL("ALTER TABLE open_tasks ADD COLUMN pendingReopen INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE open_tasks ADD COLUMN pendingDelete INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // No completion could be moved before v9.
+                db.execSQL("ALTER TABLE completed_tasks ADD COLUMN pendingRetime INTEGER NOT NULL DEFAULT 0")
             }
         }
 

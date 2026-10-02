@@ -209,7 +209,8 @@ export class BadgerStore {
   private pruneHistory(): void {
     const cutoff = Date.now() - HISTORY_RETENTION_MILLIS;
     for (const [id, row] of this.completed) {
-      if (row.completedAtMillis < cutoff) this.completed.delete(id);
+      // A move not yet pushed exists nowhere else, so it is never dropped.
+      if (row.completedAtMillis < cutoff && !row.pendingRetime) this.completed.delete(id);
     }
     this.completedSignal.set([...this.completed.values()]);
     this.driver.setItem(KEYS.completedTasks, JSON.stringify([...this.completed.values()]));

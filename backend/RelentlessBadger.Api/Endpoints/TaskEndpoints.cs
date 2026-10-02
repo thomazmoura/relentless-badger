@@ -136,6 +136,31 @@ public static class TaskEndpoints
             return Results.Ok(TaskDto.From(task));
         });
 
+        group.MapPut("/{id:guid}/completed-at", async (
+            Guid id,
+            RetimeCompletionRequest request,
+            ClaimsPrincipal principal,
+            AppDbContext db) =>
+        {
+            var userId = principal.GetUserId();
+            var task = await db.Tasks.SingleOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+            if (task is null)
+            {
+                return Results.NotFound();
+            }
+
+            // An open task has no completion to move; the client's retime is
+            // stale (reopened elsewhere) and should be dropped, not retried.
+            if (task.CompletedAt is null)
+            {
+                return Results.Conflict();
+            }
+
+            task.CompletedAt = request.CompletedAt.ToUniversalTime();
+            await db.SaveChangesAsync();
+            return Results.Ok(TaskDto.From(task));
+        });
+
         group.MapPost("/{id:guid}/reopen", async (Guid id, ClaimsPrincipal principal, AppDbContext db) =>
         {
             var userId = principal.GetUserId();

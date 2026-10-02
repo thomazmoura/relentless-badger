@@ -9,8 +9,10 @@ import { LanguagePreference } from './domain/language';
 import { I18n } from './i18n/i18n.service';
 import { NotificationSound } from './domain/notification-sound';
 import {
+  BatchConclusion,
   CompletedTask,
   ConcludedTask,
+  DoneEarlierCandidates,
   isSignedIn,
   OpenTask,
   Recurrence,
@@ -86,6 +88,9 @@ export class AppState {
   readonly dismissedSuggestion = signal<string | null>(null);
   /** Task just concluded, awaiting its undo snackbar. */
   readonly concludedTask = signal<ConcludedTask | null>(null);
+
+  /** Several things just marked done at one earlier moment, awaiting their undo snackbar. */
+  readonly batchConclusion = signal<BatchConclusion | null>(null);
 
   readonly suggestions = computed(() => {
     const query = this.quickAddText();
@@ -264,6 +269,28 @@ export class AppState {
     await this.runBusy(async () => {
       await this.repository.completeTask(id);
     });
+    this.resetTaskList();
+  }
+
+  doneEarlierCandidates(atMillis: number): Promise<DoneEarlierCandidates> {
+    return this.repository.doneEarlierCandidates(atMillis);
+  }
+
+  async markDoneEarlier(
+    atMillis: number,
+    openIds: readonly string[],
+    completedIds: readonly string[],
+  ): Promise<void> {
+    await this.runBusy(async () => {
+      this.batchConclusion.set(
+        await this.repository.completeTasksAt(atMillis, openIds, completedIds),
+      );
+    });
+    this.resetTaskList();
+  }
+
+  async undoBatchConclusion(batch: BatchConclusion): Promise<void> {
+    await this.runBusy(() => this.repository.undoBatchConclusion(batch));
     this.resetTaskList();
   }
 

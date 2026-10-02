@@ -59,6 +59,9 @@ data class CompleteTaskRequest(
     val cancelled: Boolean = false,
 )
 
+@Serializable
+data class RetimeCompletionRequest(val completedAt: String)
+
 // Full-state schedule update: null on a nullable field means "clear it".
 @Serializable
 data class UpdateTaskScheduleRequest(

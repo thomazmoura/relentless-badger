@@ -46,6 +46,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -100,6 +101,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -159,6 +161,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -224,6 +227,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -281,6 +285,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -343,6 +348,7 @@ class MigrationTest {
                 BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
                 BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
                 BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
             )
             .allowMainThreadQueries()
             .build()
@@ -354,6 +360,65 @@ class MigrationTest {
                 assertFalse("nothing was revoked before v8", task.pendingDelete)
                 // The row is still listed and armable: the new filters default open.
                 assertEquals(listOf("task-1"), db.openTaskDao().getActive().map { it.id })
+            }
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `existing v8 completions survive the migration to v9 with nothing to retime`() {
+        val context = ApplicationProvider.getApplicationContext<Application>()
+        val dbFile = context.getDatabasePath("migration-test-v8.db")
+        dbFile.parentFile?.mkdirs()
+        dbFile.delete()
+
+        // The exact schema Room generated for version 8 (pre pendingRetime),
+        // with a completion an existing install would have.
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { old ->
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `open_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, " +
+                    "`initialDelayMinutes` INTEGER NOT NULL, `repeatIntervalMinutes` INTEGER NOT NULL, " +
+                    "`firstWarningAtMillis` INTEGER, `nextFireAtMillis` INTEGER NOT NULL, " +
+                    "`recurEveryN` INTEGER, `recurUnit` TEXT, `recurDaysOfWeek` INTEGER, " +
+                    "`seriesId` TEXT, `pendingDone` INTEGER NOT NULL, `pendingCreate` INTEGER NOT NULL, " +
+                    "`pendingUpdate` INTEGER NOT NULL, `pendingReopen` INTEGER NOT NULL, " +
+                    "`pendingDelete` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `title_history` (`title` TEXT NOT NULL, " +
+                    "`useCount` INTEGER NOT NULL, `lastUsedAtMillis` INTEGER NOT NULL, " +
+                    "`dismissed` INTEGER NOT NULL, PRIMARY KEY(`title`))",
+            )
+            old.execSQL(
+                "CREATE TABLE IF NOT EXISTS `completed_tasks` (`id` TEXT NOT NULL, " +
+                    "`title` TEXT NOT NULL, `completedAtMillis` INTEGER NOT NULL, " +
+                    "`seriesId` TEXT, `cancelled` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            old.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_completed_tasks_completedAtMillis` " +
+                    "ON `completed_tasks` (`completedAtMillis`)",
+            )
+            old.execSQL("INSERT INTO completed_tasks VALUES ('task-1', 'water plants', 5000, NULL, 0)")
+            old.version = 8
+        }
+
+        val db = Room.databaseBuilder(context, BadgerDb::class.java, "migration-test-v8.db")
+            .addMigrations(
+                BadgerDb.MIGRATION_2_3, BadgerDb.MIGRATION_3_4,
+                BadgerDb.MIGRATION_4_5, BadgerDb.MIGRATION_5_6,
+                BadgerDb.MIGRATION_6_7, BadgerDb.MIGRATION_7_8,
+                BadgerDb.MIGRATION_8_9,
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            runBlocking {
+                val row = db.completedTaskDao().getById("task-1")!!
+                assertEquals(5000L, row.completedAtMillis)
+                assertFalse("nothing was moved before v9", row.pendingRetime)
+                assertEquals(emptyList<CompletedTaskEntity>(), db.completedTaskDao().getPendingRetime())
             }
         } finally {
             db.close()

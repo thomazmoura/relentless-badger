@@ -8,9 +8,12 @@ import {
   resolveLanguage,
 } from '../domain/language';
 import {
+  BatchConclusion,
   CompletedTask,
   ConcludedTask,
   defaultWaitMinutes,
+  DONE_EARLIER_WINDOW_MILLIS,
+  DoneEarlierCandidates,
   OpenTask,
   Recurrence,
   Session,
@@ -144,6 +147,78 @@ export class TaskRepository {
    */
   async cancelTask(id: string): Promise<ConcludedTask | null> {
     return await this.closeTask(id, true);
+  }
+
+  /**
+   * What can be marked done at `atMillis`: open tasks that already existed then,
+   * and completions within [DONE_EARLIER_WINDOW_MILLIS] of it that could be
+   * moved there. Cancelled ones are left out — they were closed as not done,
+   * and moving them would not make them done.
+   */
+  async doneEarlierCandidates(atMillis: number): Promise<DoneEarlierCandidates> {
+    const now = this.timeSource.now();
+    const at = Math.min(atMillis, now);
+    return {
+      open: (await this.dao.getActive()).filter((task) => task.createdAtMillis <= at),
+      completed: (
+        await this.completedDao.between(
+          at - DONE_EARLIER_WINDOW_MILLIS,
+          Math.min(at + DONE_EARLIER_WINDOW_MILLIS, now + 1),
+        )
+      ).filter((row) => !row.cancelled),
+    };
+  }
+
+  /**
+   * Marks several things done at one earlier moment: each open task in
+   * `openIds` is completed there exactly as [completeTask] would, and each
+   * completion in `completedIds` is moved there.
+   */
+  async completeTasksAt(
+    atMillis: number,
+    openIds: readonly string[],
+    completedIds: readonly string[],
+  ): Promise<BatchConclusion> {
+    const concluded: ConcludedTask[] = [];
+    for (const id of openIds) {
+      const result = await this.closeTask(id, false, atMillis);
+      if (result) concluded.push(result);
+    }
+    const retimed: CompletedTask[] = [];
+    for (const id of completedIds) {
+      const previous = await this.retimeCompletion(id, atMillis);
+      if (previous) retimed.push(previous);
+    }
+    return { concluded, retimed };
+  }
+
+  /** Reverses [completeTasksAt]: tasks reopen, moved completions go back. */
+  async undoBatchConclusion(batch: BatchConclusion): Promise<void> {
+    for (const concluded of batch.concluded) await this.undoConclusion(concluded);
+    for (const previous of batch.retimed) {
+      await this.retimeCompletion(previous.id, previous.completedAtMillis);
+    }
+  }
+
+  /**
+   * Moves a completion to `atMillis` — the user tapped Done late. Returns the
+   * row as it was, for undo, or null when there is no such completion.
+   *
+   * Flagged even when the completion itself hasn't been pushed yet: that push
+   * would carry the new moment anyway, but if an earlier push landed with only
+   * its response lost, the server's idempotent complete would keep the old one
+   * — the follow-up retime is what repairs it.
+   */
+  async retimeCompletion(id: string, atMillis: number): Promise<CompletedTask | null> {
+    const previous = await this.completedDao.getById(id);
+    if (!previous) return null;
+    await this.completedDao.upsert({
+      ...previous,
+      completedAtMillis: Math.min(atMillis, this.timeSource.now()),
+      pendingRetime: true,
+    });
+    this.syncScheduler.requestSync();
+    return previous;
   }
 
   /**
@@ -532,6 +607,7 @@ export class TaskRepository {
     await this.flushPendingReopens();
     await this.pushPendingUpdates();
     await this.flushPendingCompletions();
+    await this.flushPendingRetimes();
     await this.flushPendingDeletes();
     await this.pushSettingsIfDirty();
 
@@ -564,10 +640,10 @@ export class TaskRepository {
     }
     await this.dao.deleteSyncedNotIn([...remoteIds]);
 
-    // Completion history for the calendar. Append-only IGNORE: a completion
-    // pushed moments ago comes straight back with the server's timestamp, but
-    // the locally cached row (with the truthful local time) wins. The full
-    // history is small; add a `since` param server-side if it grows.
+    // Completion history for the calendar. Completions are pushed with the
+    // truthful local time, so the server's copy is adopted — that is how a
+    // completion moved on another device reaches this one. The full history is
+    // small; add a `since` param server-side if it grows.
     const done = await this.apiClient.api().getTasks('done');
     // A conclusion undone here is still on the server's done list until its
     // reopen lands, and a task another device reopened has to lose the
@@ -581,10 +657,10 @@ export class TaskRepository {
     for (const id of remoteIds) {
       if (!closingLocally.has(id)) await this.completedDao.delete(id);
     }
-    await this.completedDao.insertIgnoring(
+    await this.completedDao.adoptFromServer(
       done
         .filter((dto): dto is TaskDto & { completedAt: string } => !!dto.completedAt)
-        .filter((dto) => !reopening.has(dto.id))
+        .filter((dto) => !reopening.has(dto.id) && !closingLocally.has(dto.id))
         .map((dto) => ({
           id: dto.id,
           title: dto.title,
@@ -738,6 +814,31 @@ export class TaskRepository {
         if (error.status === 401) throw error;
         // Gone on the server already; stop retrying.
         if (error.status === 404) await this.dao.delete(task.id);
+      }
+    }
+  }
+
+  /**
+   * Completions the user moved after they reached the server. The flag is
+   * cleared only if the row still holds the moment just pushed, so moving it
+   * again while the request was in flight is pushed on the next sync.
+   */
+  private async flushPendingRetimes(): Promise<void> {
+    for (const row of await this.completedDao.getPendingRetime()) {
+      try {
+        await this.apiClient
+          .api()
+          .retimeCompletion(row.id, { completedAt: toIsoInstant(row.completedAtMillis) });
+        await this.completedDao.clearPendingRetime(row.id, row.completedAtMillis);
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        if (error.status === 401) throw error;
+        // 404: deleted elsewhere. 409: reopened elsewhere, so there is no
+        // completion to move. Either way the retime is moot, and other 4xx would
+        // repeat forever. 5xx: retry next sync.
+        if (error.status >= 400 && error.status <= 499) {
+          await this.completedDao.clearPendingRetime(row.id, row.completedAtMillis);
+        }
       }
     }
   }

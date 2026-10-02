@@ -68,6 +68,11 @@ public record CreateTaskRequest(
 // closes the task without crediting it as done.
 public record CompleteTaskRequest(DateTime? CompletedAt = null, bool Cancelled = false);
 
+// Moves an existing completion to the moment the task was really done — the
+// user tapped Done late and corrected it afterwards. Unlike completing, which
+// is idempotent and never moves the time, this overwrites it on purpose.
+public record RetimeCompletionRequest(DateTime CompletedAt);
+
 // Full-state update: the client always sends the complete desired schedule,
 // so null on a nullable field means "clear it" (no PATCH absent-vs-null games).
 public record UpdateTaskScheduleRequest(

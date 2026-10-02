@@ -182,15 +182,32 @@ export class CompletedTaskStore {
     this.store.mutateCompletedTasks((rows) => rows.delete(id));
   }
 
+  /** WHERE pendingRetime = 1 */
+  async getPendingRetime(): Promise<CompletedTask[]> {
+    return [...this.store.completedTaskMap().values()].filter((row) => row.pendingRetime);
+  }
+
   /**
-   * Sync pull: existing rows win, so an offline completion's true local
-   * timestamp is never overwritten by the server's later push-time stamp.
-   * Completions made on other devices don't exist locally and insert normally.
+   * Only if the row still holds the moment just pushed, so moving it again while
+   * the request was in flight is pushed on the next sync.
    */
-  async insertIgnoring(entries: readonly CompletedTask[]): Promise<void> {
+  async clearPendingRetime(id: string, atMillis: number): Promise<void> {
+    this.store.mutateCompletedTasks((rows) => {
+      const row = rows.get(id);
+      if (row && row.completedAtMillis === atMillis) rows.set(id, { ...row, pendingRetime: false });
+    });
+  }
+
+  /**
+   * Sync pull: the server's copy replaces the cached one — which is how a
+   * completion moved on another device reaches this one — except where this
+   * device moved it and the move hasn't been pushed. Checked inside the same
+   * mutation as the write, so a move made mid-sync isn't overwritten.
+   */
+  async adoptFromServer(entries: readonly CompletedTask[]): Promise<void> {
     this.store.mutateCompletedTasks((rows) => {
       for (const entry of entries) {
-        if (!rows.has(entry.id)) rows.set(entry.id, entry);
+        if (!rows.get(entry.id)?.pendingRetime) rows.set(entry.id, entry);
       }
     });
   }

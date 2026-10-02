@@ -5,6 +5,7 @@ import {
   CreateTaskRequest,
   LoginRequest,
   LoginResponse,
+  RetimeCompletionRequest,
   TaskDto,
   TaskStatus,
   UpdateTaskScheduleRequest,
@@ -34,6 +35,7 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
   failCreatesWithServerError = false;
   failTaskPull = false;
   failSettingsPush = false;
+  failRetimesWithServerError = false;
 
   settings: SettingsDto = {
     initialDelayMinutes: 60,
@@ -47,6 +49,7 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
   readonly receivedCreates: CreateTaskRequest[] = [];
   readonly receivedCompletions: string[] = [];
   readonly receivedReopens: string[] = [];
+  readonly receivedRetimes: [string, RetimeCompletionRequest][] = [];
   readonly receivedDeletes: string[] = [];
   readonly receivedSettingsPuts: SettingsDto[] = [];
   readonly receivedScheduleUpdates: [string, UpdateTaskScheduleRequest][] = [];
@@ -212,6 +215,19 @@ export class FakeBadgerApi implements BadgerApi, ApiProvider {
     };
     this.tasks.set(id, done);
     return done;
+  }
+
+  async retimeCompletion(id: string, request: RetimeCompletionRequest): Promise<TaskDto> {
+    this.gate();
+    const task = this.tasks.get(id);
+    if (!task) throw new ApiError(404);
+    // Mirrors the server: there is no completion to move on an open task.
+    if (!task.completedAt) throw new ApiError(409);
+    if (this.failRetimesWithServerError) throw new ApiError(500);
+    this.receivedRetimes.push([id, request]);
+    const moved: TaskDto = { ...task, completedAt: request.completedAt };
+    this.tasks.set(id, moved);
+    return moved;
   }
 
   async reopenTask(id: string): Promise<TaskDto> {

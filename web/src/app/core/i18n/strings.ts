@@ -144,6 +144,27 @@ export function stringsFor(language: Language) {
     donePreviously: t('Done previously', 'Feita antes'),
     cancelTask: t('Cancel task', 'Cancelar tarefa'),
 
+    // --- Done earlier -------------------------------------------------------
+
+    doneEarlier: t('Mark done earlier…', 'Marcar feitas antes…'),
+    doneEarlierAt: (at: string) => t(`Done at ${at}`, `Feitas em ${at}`),
+    changeMoment: t('Change', 'Alterar'),
+    doneEarlierOpen: t('Open', 'Abertas'),
+    doneEarlierAlreadyDone: t(
+      'Already done — move to this time',
+      'Já feitas — mover para este horário',
+    ),
+    doneAtTime: (at: string) => t(`done ${at}`, `feita ${at}`),
+    markNDone: (n: number) => t(`Mark ${n} done`, `Marcar ${n}`),
+    nothingToMark: t(
+      'Nothing open or recently done around then.',
+      'Nada aberto ou feito recentemente nessa época.',
+    ),
+    batchConcluded: (n: number) =>
+      n === 1
+        ? t('Marked 1 done', '1 marcada como feita')
+        : t(`Marked ${n} done`, `${n} marcadas como feitas`),
+
     // --- Schedule dialogs ---------------------------------------------------
 
     repeatTitle: t('Repeat', 'Repetir'),

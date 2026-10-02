@@ -3,7 +3,14 @@ import { BadgerStore } from '../data/local-store';
 import { MemoryStorageDriver } from '../data/storage';
 import { CompletedTaskStore, OpenTaskStore, TitleStore } from '../data/task-store';
 import { TaskRepository } from '../data/task-repository';
-import { CompletedTask, ConcludedTask, OpenTask, Recurrence, SettingsDto } from '../domain/models';
+import {
+  BatchConclusion,
+  CompletedTask,
+  ConcludedTask,
+  OpenTask,
+  Recurrence,
+  SettingsDto,
+} from '../domain/models';
 import { LanguagePreference } from '../domain/language';
 import { NotificationSound } from '../domain/notification-sound';
 import {
@@ -138,6 +145,18 @@ export class BadgerScenario {
 
   whenConclusionUndone(concluded: ConcludedTask): Promise<void> {
     return this.repository.undoConclusion(concluded);
+  }
+
+  whenMarkedDoneAt(
+    atMillis: number,
+    openIds: string[] = [],
+    completedIds: string[] = [],
+  ): Promise<BatchConclusion> {
+    return this.repository.completeTasksAt(atMillis, openIds, completedIds);
+  }
+
+  whenBatchUndone(batch: BatchConclusion): Promise<void> {
+    return this.repository.undoBatchConclusion(batch);
   }
 
   whenScheduleEdited(
@@ -311,5 +330,6 @@ export class BadgerScenario {
     expect(this.server.receivedScheduleUpdates, 'expected no schedule updates pushed').toEqual([]);
     expect(this.server.receivedReopens, 'expected no reopens pushed').toEqual([]);
     expect(this.server.receivedDeletes, 'expected no deletes pushed').toEqual([]);
+    expect(this.server.receivedRetimes, 'expected no retimes pushed').toEqual([]);
   }
 }

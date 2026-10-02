@@ -137,7 +137,7 @@ describe('BadgerStore', () => {
     const completedStore = new CompletedTaskStore(store);
     const recent = Date.now();
     const ancient = Date.now() - 5 * 365 * 24 * 60 * 60 * 1000;
-    await completedStore.insertIgnoring([completion('old', ancient), completion('new', recent)]);
+    await completedStore.adoptFromServer([completion('old', ancient), completion('new', recent)]);
     store.flush();
 
     let full = true;

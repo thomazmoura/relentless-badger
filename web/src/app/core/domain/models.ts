@@ -67,6 +67,43 @@ export interface CompletedTask {
   readonly seriesId: string | null;
   /** Closed without being done — kept for the record, hidden from history by default. */
   readonly cancelled: boolean;
+  /**
+   * The user moved this completion after it had already reached the server.
+   * Lives here rather than on the open row because that row is deleted once
+   * the completion is pushed. Absent on rows stored before it existed.
+   */
+  readonly pendingRetime?: boolean;
+}
+
+/**
+ * How far either side of the picked moment an existing completion still counts
+ * as "recent" — wide enough to catch last night's work being re-dated the next
+ * morning, narrow enough that the list stays a short checklist.
+ */
+export const DONE_EARLIER_WINDOW_MILLIS = 48 * 60 * 60_000;
+
+/**
+ * What `TaskRepository.doneEarlierCandidates` offers for marking done at one
+ * earlier moment: open tasks that already existed then, and recent completions
+ * whose moment can be moved to it.
+ */
+export interface DoneEarlierCandidates {
+  readonly open: OpenTask[];
+  readonly completed: CompletedTask[];
+}
+
+/**
+ * Receipt for `TaskRepository.completeTasksAt`, given to
+ * `undoBatchConclusion` to reverse it. `retimed` holds each moved completion
+ * as it was before, so the undo can put it back.
+ */
+export interface BatchConclusion {
+  readonly concluded: ConcludedTask[];
+  readonly retimed: CompletedTask[];
+}
+
+export function batchCount(batch: BatchConclusion): number {
+  return batch.concluded.length + batch.retimed.length;
 }
 
 /**

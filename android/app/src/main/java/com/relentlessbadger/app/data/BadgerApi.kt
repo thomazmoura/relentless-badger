@@ -37,6 +37,13 @@ interface BadgerApi {
         @Body request: CompleteTaskRequest,
     ): TaskDto
 
+    /** Moves an existing completion to another moment; 409 when the task is open. */
+    @PUT("tasks/{id}/completed-at")
+    suspend fun retimeCompletion(
+        @Path("id") id: String,
+        @Body request: RetimeCompletionRequest,
+    ): TaskDto
+
     /** Undo: the server drops the completion and lists the task as open again. */
     @POST("tasks/{id}/reopen")
     suspend fun reopenTask(@Path("id") id: String): TaskDto

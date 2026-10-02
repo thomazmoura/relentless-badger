@@ -33,6 +33,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -186,11 +187,28 @@ fun MainScreen(
         }
     }
 
+    LaunchedEffect(viewModel.batchConclusion) {
+        viewModel.batchConclusion?.let { batch ->
+            val result = snackbarHostState.showSnackbar(
+                message = s.batchConcluded(batch.count),
+                actionLabel = s.undo,
+                duration = SnackbarDuration.Long,
+            )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoBatchConclusion(batch)
+            }
+            viewModel.batchConclusion = null
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(s.appName) },
                 actions = {
+                    IconButton(onClick = { viewModel.doneEarlierPicking = true }) {
+                        Icon(Icons.Filled.DoneAll, contentDescription = s.doneEarlier)
+                    }
                     PauseMenuButton(
                         pauseUntilMillis = pauseUntilMillis,
                         use24Hour = use24Hour,
@@ -453,6 +471,31 @@ fun MainScreen(
             minMillis = task.createdAtMillis,
             maxMillis = nowMillis,
         )
+    }
+
+    // Marking several things done at one earlier moment: the moment first, then
+    // what was done at it. Days run up to today; a time later today is clamped
+    // to now by the repository, like a single backdated completion.
+    if (viewModel.doneEarlierPicking) {
+        DateTimePickerFlow(
+            initialMillis = viewModel.doneEarlierAtMillis ?: nowMillis,
+            onDismiss = { viewModel.doneEarlierPicking = false },
+            onPicked = { atMillis -> viewModel.pickDoneEarlierAt(atMillis) },
+            maxMillis = nowMillis,
+        )
+    } else {
+        val doneEarlierAt = viewModel.doneEarlierAtMillis
+        val candidates = viewModel.doneEarlierCandidates
+        if (doneEarlierAt != null && candidates != null) {
+            DoneEarlierDialog(
+                atMillis = doneEarlierAt,
+                candidates = candidates,
+                use24Hour = use24Hour,
+                onChangeMoment = { viewModel.doneEarlierPicking = true },
+                onDismiss = { viewModel.closeDoneEarlier() },
+                onConfirm = { openIds, completedIds -> viewModel.markDoneEarlier(openIds, completedIds) },
+            )
+        }
     }
 
     viewModel.editingTask?.let { task ->
@@ -932,7 +975,7 @@ private fun LazyListScope.taskRows(
 }
 
 @Composable
-private fun TaskSectionHeader(label: String) {
+internal fun TaskSectionHeader(label: String) {
     Text(
         label,
         style = MaterialTheme.typography.titleSmall,

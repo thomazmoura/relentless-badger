@@ -11,6 +11,7 @@ import com.relentlessbadger.app.data.LoginResponse
 import com.relentlessbadger.app.data.NotificationSound
 import com.relentlessbadger.app.data.SoundStream
 import com.relentlessbadger.app.data.parseQuietRange
+import com.relentlessbadger.app.data.RetimeCompletionRequest
 import com.relentlessbadger.app.data.Session
 import com.relentlessbadger.app.data.SettingsDto
 import com.relentlessbadger.app.data.SettingsStore
@@ -46,6 +47,7 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
     var failCreatesWithServerError = false
     var failTaskPull = false
     var failSettingsPush = false
+    var failRetimesWithServerError = false
 
     var settings = SettingsDto(60, 15, listOf(60, 240), 0)
     val tasks = linkedMapOf<String, TaskDto>()
@@ -53,6 +55,7 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
     val receivedCreates = mutableListOf<CreateTaskRequest>()
     val receivedCompletions = mutableListOf<String>()
     val receivedReopens = mutableListOf<String>()
+    val receivedRetimes = mutableListOf<Pair<String, RetimeCompletionRequest>>()
     val receivedDeletes = mutableListOf<String>()
     val receivedSettingsPuts = mutableListOf<SettingsDto>()
     val receivedScheduleUpdates = mutableListOf<Pair<String, UpdateTaskScheduleRequest>>()
@@ -191,6 +194,18 @@ class FakeBadgerApi(private val clock: TimeSource) : BadgerApi {
         )
         tasks[id] = done
         return done
+    }
+
+    override suspend fun retimeCompletion(id: String, request: RetimeCompletionRequest): TaskDto {
+        gate()
+        val task = tasks[id] ?: throw httpError(404)
+        // Mirrors the server: there is no completion to move on an open task.
+        if (task.completedAt == null) throw httpError(409)
+        if (failRetimesWithServerError) throw httpError(500)
+        receivedRetimes += id to request
+        val moved = task.copy(completedAt = request.completedAt)
+        tasks[id] = moved
+        return moved
     }
 
     override suspend fun reopenTask(id: String): TaskDto {

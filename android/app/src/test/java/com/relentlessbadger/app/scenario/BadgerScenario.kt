@@ -3,6 +3,7 @@ package com.relentlessbadger.app.scenario
 import android.app.Application
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import com.relentlessbadger.app.data.BatchConclusion
 import com.relentlessbadger.app.data.ConcludedTask
 import com.relentlessbadger.app.data.LanguagePreference
 import com.relentlessbadger.app.data.NotificationSound
@@ -156,6 +157,14 @@ class BadgerScenario {
 
     suspend fun whenConclusionUndone(concluded: ConcludedTask) = repository.undoConclusion(concluded)
 
+    suspend fun whenMarkedDoneAt(
+        atMillis: Long,
+        openIds: List<String> = emptyList(),
+        completedIds: List<String> = emptyList(),
+    ): BatchConclusion = repository.completeTasksAt(atMillis, openIds, completedIds)
+
+    suspend fun whenBatchUndone(batch: BatchConclusion) = repository.undoBatchConclusion(batch)
+
     suspend fun whenScheduleEdited(
         id: String,
         firstWarningAtMillis: Long?,
@@ -290,6 +299,7 @@ class BadgerScenario {
         assertTrue("expected no schedule updates pushed", server.receivedScheduleUpdates.isEmpty())
         assertTrue("expected no reopens pushed", server.receivedReopens.isEmpty())
         assertTrue("expected no deletes pushed", server.receivedDeletes.isEmpty())
+        assertTrue("expected no retimes pushed", server.receivedRetimes.isEmpty())
     }
 
     fun close() = db.close()

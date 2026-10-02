@@ -9,6 +9,7 @@ import {
   CreateTaskRequest,
   LoginRequest,
   LoginResponse,
+  RetimeCompletionRequest,
   TaskDto,
   TaskStatus,
   UpdateTaskScheduleRequest,
@@ -57,6 +58,12 @@ export class HttpBadgerApi implements BadgerApi, ApiProvider {
 
   completeTask(id: string, request: CompleteTaskRequest): Promise<TaskDto> {
     return this.send(this.http.post<TaskDto>(`tasks/${encodeURIComponent(id)}/complete`, request));
+  }
+
+  retimeCompletion(id: string, request: RetimeCompletionRequest): Promise<TaskDto> {
+    return this.send(
+      this.http.put<TaskDto>(`tasks/${encodeURIComponent(id)}/completed-at`, request),
+    );
   }
 
   reopenTask(id: string): Promise<TaskDto> {

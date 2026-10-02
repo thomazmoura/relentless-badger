@@ -44,6 +44,10 @@ export interface CompleteTaskRequest {
   readonly cancelled: boolean;
 }
 
+export interface RetimeCompletionRequest {
+  readonly completedAt: string;
+}
+
 /** Full-state schedule update: null on a nullable field means "clear it". */
 export interface UpdateTaskScheduleRequest {
   readonly firstWarningAt: string | null;
@@ -80,6 +84,8 @@ export interface BadgerApi {
   createTask(request: CreateTaskRequest): Promise<TaskDto>;
   updateTaskSchedule(id: string, request: UpdateTaskScheduleRequest): Promise<TaskDto>;
   completeTask(id: string, request: CompleteTaskRequest): Promise<TaskDto>;
+  /** Moves an existing completion to another moment; 409 when the task is open. */
+  retimeCompletion(id: string, request: RetimeCompletionRequest): Promise<TaskDto>;
   /** Undo: the server drops the completion and lists the task as open again. */
   reopenTask(id: string): Promise<TaskDto>;
   deleteTask(id: string): Promise<void>;

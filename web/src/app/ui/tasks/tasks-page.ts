@@ -25,9 +25,10 @@ import { AppState } from '../../core/app-state';
 import { I18n } from '../../core/i18n/i18n.service';
 
 import { prefers24Hour } from '../../core/domain/format';
-import { OpenTask } from '../../core/domain/models';
+import { batchCount, OpenTask } from '../../core/domain/models';
 import { plusDays, startOfDay } from '../../core/domain/time';
 import { DateTimePickerDialog } from '../dialogs/date-time-picker-dialog';
+import { DoneEarlierDialog, DoneEarlierResult } from '../dialogs/done-earlier-dialog';
 import { EditScheduleDialog, EditScheduleResult } from '../dialogs/edit-schedule-dialog';
 import { WaitDurationDialog } from '../dialogs/wait-duration-dialog';
 import { WaitOptionsDialog, WaitOptionsResult } from '../dialogs/wait-options-dialog';
@@ -61,6 +62,9 @@ const ROW_TAP_EVENTS = ['click', 'contextmenu', 'pointerdown'] as const;
   template: `
     <mat-toolbar>
       <span class="title">{{ s().appName }}</span>
+      <button matIconButton [attr.aria-label]="s().doneEarlier" (click)="doneEarlier()">
+        <mat-icon>done_all</mat-icon>
+      </button>
       <button
         matIconButton
         [attr.aria-label]="s().sync"
@@ -284,6 +288,17 @@ export class TasksPage {
         .subscribe(() => void this.state.undoConclusion(concluded));
     });
 
+    effect(() => {
+      const batch = this.state.batchConclusion();
+      if (!batch) return;
+      this.state.batchConclusion.set(null);
+      const s = this.s();
+      this.snackBar
+        .open(s.batchConcluded(batchCount(batch)), s.undo, { duration: 6000 })
+        .onAction()
+        .subscribe(() => void this.state.undoBatchConclusion(batch));
+    });
+
     // Acting on a task usually moves it down the list, and the tasks that end up
     // on top are the ones firing soonest — exactly what the user needs to see to
     // decide whether they want to wait on those too.
@@ -397,6 +412,41 @@ export class TasksPage {
       .afterClosed()
       .toPromise();
     if (typeof picked === 'number') await this.state.completeTask(task.id, picked);
+  }
+
+  /**
+   * Marks several things done at one earlier moment: the moment first, then what
+   * was done at it. Days run up to today; a time later today is clamped to now
+   * by the repository, like a single backdated completion.
+   */
+  async doneEarlier(): Promise<void> {
+    let initialMillis = this.state.nowMillis();
+    for (;;) {
+      const picked = await this.dialog
+        .open(DateTimePickerDialog, {
+          data: {
+            title: this.s().doneEarlier,
+            initialMillis,
+            maxMillis: this.state.nowMillis(),
+          },
+        })
+        .afterClosed()
+        .toPromise();
+      if (typeof picked !== 'number') return;
+      const candidates = await this.state.doneEarlierCandidates(picked);
+      const result = (await this.dialog
+        .open(DoneEarlierDialog, {
+          data: { atMillis: picked, candidates, use24Hour: this.use24Hour },
+        })
+        .afterClosed()
+        .toPromise()) as DoneEarlierResult | undefined;
+      if (result === 'change') {
+        initialMillis = picked;
+        continue;
+      }
+      if (result) await this.state.markDoneEarlier(picked, result.openIds, result.completedIds);
+      return;
+    }
   }
 
   private async openWaitOptions(task: OpenTask): Promise<void> {

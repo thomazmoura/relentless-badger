@@ -137,6 +137,64 @@ class TaskRepository(
     suspend fun cancelTask(id: String) = closeTask(id, cancelled = true)
 
     /**
+     * What can be marked done at [atMillis]: open tasks that already existed
+     * then, and completions within [DONE_EARLIER_WINDOW_MILLIS] of it that could
+     * be moved there. Cancelled ones are left out — they were closed as not
+     * done, and moving them would not make them done.
+     */
+    suspend fun doneEarlierCandidates(atMillis: Long): DoneEarlierCandidates {
+        val now = timeSource.now()
+        val at = atMillis.coerceAtMost(now)
+        return DoneEarlierCandidates(
+            open = dao.getActive().filter { it.createdAtMillis <= at },
+            completed = completedDao
+                .getBetween(at - DONE_EARLIER_WINDOW_MILLIS, minOf(at + DONE_EARLIER_WINDOW_MILLIS, now + 1))
+                .filter { !it.cancelled },
+        )
+    }
+
+    /**
+     * Marks several things done at one earlier moment: each open task in
+     * [openIds] is completed there exactly as [completeTask] would, and each
+     * completion in [completedIds] is moved there.
+     */
+    suspend fun completeTasksAt(
+        atMillis: Long,
+        openIds: Collection<String>,
+        completedIds: Collection<String>,
+    ): BatchConclusion = BatchConclusion(
+        concluded = openIds.mapNotNull { closeTask(it, cancelled = false, atMillis = atMillis) },
+        retimed = completedIds.mapNotNull { retimeCompletion(it, atMillis) },
+    )
+
+    /** Reverses [completeTasksAt]: tasks reopen, moved completions go back. */
+    suspend fun undoBatchConclusion(batch: BatchConclusion) {
+        batch.concluded.forEach { undoConclusion(it) }
+        batch.retimed.forEach { retimeCompletion(it.id, it.completedAtMillis) }
+    }
+
+    /**
+     * Moves a completion to [atMillis] — the user tapped Done late. Returns the
+     * row as it was, for undo, or null when there is no such completion.
+     *
+     * Flagged even when the completion itself hasn't been pushed yet: that push
+     * would carry the new moment anyway, but if an earlier push landed with
+     * only its response lost, the server's idempotent complete would keep the
+     * old one — the follow-up retime is what repairs it.
+     */
+    suspend fun retimeCompletion(id: String, atMillis: Long): CompletedTaskEntity? {
+        val previous = completedDao.getById(id) ?: return null
+        completedDao.upsert(
+            previous.copy(
+                completedAtMillis = atMillis.coerceAtMost(timeSource.now()),
+                pendingRetime = true,
+            ),
+        )
+        syncScheduler.requestSync()
+        return previous
+    }
+
+    /**
      * Reverses a conclusion made on this device: the task comes back exactly as
      * [ConcludedTask] snapshotted it, its completion record is dropped, and any
      * occurrence the conclusion spawned is revoked.
@@ -555,6 +613,7 @@ class TaskRepository(
         flushPendingReopens()
         pushPendingUpdates()
         flushPendingCompletions()
+        flushPendingRetimes()
         flushPendingDeletes()
         pushSettingsIfDirty()
 
@@ -582,10 +641,10 @@ class TaskRepository(
             .forEach { scheduler.cancel(it.id) }
         dao.deleteSyncedNotIn(remoteIds.ifEmpty { setOf("") }.toList())
 
-        // Completion history for the calendar. Append-only IGNORE: a completion
-        // pushed moments ago comes straight back with the server's timestamp,
-        // but the locally cached row (with the truthful local time) wins. The
-        // full history is small; add a `since` param server-side if it grows.
+        // Completion history for the calendar. Completions are pushed with the
+        // truthful local time, so the server's copy is adopted — that is how a
+        // completion moved on another device reaches this one. The full history
+        // is small; add a `since` param server-side if it grows.
         val done = apiClient.api().getTasks("done")
         // A conclusion undone here is still on the server's done list until its
         // reopen lands, and a task another device reopened has to lose the
@@ -597,10 +656,10 @@ class TaskRepository(
         // truthful local completion time.
         val closingLocally = dao.getPendingDone().map { it.id }.toSet()
         remoteIds.filter { it !in closingLocally }.forEach { completedDao.delete(it) }
-        completedDao.insertIgnoring(
+        completedDao.adoptFromServer(
             done.mapNotNull { dto ->
                 val completedAt = dto.completedAt ?: return@mapNotNull null
-                if (dto.id in reopening) return@mapNotNull null
+                if (dto.id in reopening || dto.id in closingLocally) return@mapNotNull null
                 CompletedTaskEntity(
                     dto.id, dto.title, Instant.parse(completedAt).toEpochMilli(), dto.seriesId,
                     dto.cancelled,
@@ -750,6 +809,31 @@ class TaskRepository(
                     e.code() == 401 -> throw e
                     // Gone on the server already; stop retrying.
                     e.code() == 404 -> dao.delete(task.id)
+                }
+            }
+        }
+    }
+
+    /**
+     * Completions the user moved after they reached the server. The flag is
+     * cleared only if the row still holds the moment just pushed, so moving it
+     * again while the request was in flight is pushed on the next sync.
+     */
+    private suspend fun flushPendingRetimes() {
+        for (row in completedDao.getPendingRetime()) {
+            try {
+                apiClient.api().retimeCompletion(
+                    row.id,
+                    RetimeCompletionRequest(Instant.ofEpochMilli(row.completedAtMillis).toString()),
+                )
+                completedDao.clearPendingRetime(row.id, row.completedAtMillis)
+            } catch (e: HttpException) {
+                when {
+                    e.code() == 401 -> throw e
+                    // 404: deleted elsewhere. 409: reopened elsewhere, so there is
+                    // no completion to move. Either way the retime is moot, and
+                    // other 4xx would repeat forever. 5xx: retry next sync.
+                    e.code() in 400..499 -> completedDao.clearPendingRetime(row.id, row.completedAtMillis)
                 }
             }
         }
